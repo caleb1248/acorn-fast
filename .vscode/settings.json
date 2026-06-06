@@ -1,0 +1,7 @@
+{
+  "chat.tools.terminal.autoApprove": {
+    "npx tsc": true
+  },
+  "editor.defaultFormatter": "oxc.oxc-vscode",
+  "js/ts.tsdk.path": "node_modules/typescript/lib"
+}
