@@ -1,7 +1,8 @@
-import { hasOwn, isArray } from "./util.js";
+import { isArray } from "./util.js";
 import { SourceLocation } from "./locutil.js";
-import type { Comment, Options } from "./acorn.js";
+import type { Comment, Options, ExternalOptions } from "./acorn.js";
 import type { Parser } from "./state.js";
+import type { Position } from "./acorn.d.ts";
 
 // A second argument must be given to configure the parser process.
 // These options are recognized (only `ecmaVersion` is required):
@@ -13,7 +14,7 @@ export const defaultOptions: Options = {
   // (the latest version the library supports). This influences
   // support for strict mode, the set of reserved words, and support
   // for new syntax features.
-  ecmaVersion: null,
+  ecmaVersion: -1,
   // `sourceType` indicates the mode the code should be parsed in.
   // Can be either `"script"`, `"module"` or `"commonjs"`. This influences global
   // strict mode and parsing of `import` and `export` declarations.
@@ -108,51 +109,145 @@ export const defaultOptions: Options = {
 
 let warnedAboutEcmaVersion = false;
 
-export function getOptions(opts?: Options) {
-  let options: Options = {};
-
-  for (let opt in defaultOptions)
-    options[opt] = opts && hasOwn(opts, opt) ? opts[opt] : defaultOptions[opt];
-
-  if (options.ecmaVersion === "latest") {
-    options.ecmaVersion = 1e8;
-  } else if (options.ecmaVersion == null) {
-    if (!warnedAboutEcmaVersion && typeof console === "object" && console.warn) {
+function convertEcmaVersion(
+  version: number | "latest" | null | undefined,
+): number {
+  if (version === "latest") {
+    version = 1e8;
+  } else if (!version || version < 0) {
+    if (
+      !warnedAboutEcmaVersion &&
+      typeof console === "object" &&
+      console.warn
+    ) {
       warnedAboutEcmaVersion = true;
       console.warn(
         "Since Acorn 8.0.0, options.ecmaVersion is required.\nDefaulting to 2020, but this will stop working in the future.",
       );
     }
-    options.ecmaVersion = 11;
-  } else if (options.ecmaVersion >= 2015) {
-    options.ecmaVersion -= 2009;
+    return 11;
+  } else if (version >= 2015) {
+    return version - 2009;
   }
 
-  if (options.allowReserved == null) options.allowReserved = options.ecmaVersion < 5;
+  return version;
+}
 
-  if (!opts || opts.allowHashBang == null) options.allowHashBang = options.ecmaVersion >= 14;
+export function getOptions2(options?: ExternalOptions): Options {
+  const opts = options || defaultOptions;
+  const ecmaVersion = convertEcmaVersion(opts.ecmaVersion);
+
+  const result: Options = {
+    ecmaVersion: ecmaVersion,
+    sourceType: opts.sourceType ?? defaultOptions.sourceType,
+    onInsertedSemicolon:
+      opts.onInsertedSemicolon ?? defaultOptions.onInsertedSemicolon,
+    onTrailingComma: opts.onTrailingComma ?? defaultOptions.onTrailingComma,
+    allowReserved:
+      opts.allowReserved ?? defaultOptions.allowReserved ?? ecmaVersion < 5,
+    allowReturnOutsideFunction:
+      opts.allowReturnOutsideFunction ??
+      defaultOptions.allowReturnOutsideFunction,
+    allowImportExportEverywhere:
+      opts.allowImportExportEverywhere ??
+      defaultOptions.allowImportExportEverywhere,
+    allowAwaitOutsideFunction:
+      opts.allowAwaitOutsideFunction ??
+      defaultOptions.allowAwaitOutsideFunction,
+    allowSuperOutsideMethod:
+      opts.allowSuperOutsideMethod ?? defaultOptions.allowSuperOutsideMethod,
+    allowHashBang:
+      opts.allowHashBang ?? defaultOptions.allowHashBang ?? ecmaVersion >= 14,
+    checkPrivateFields:
+      opts.checkPrivateFields ?? defaultOptions.checkPrivateFields,
+    locations: opts.locations ?? defaultOptions.locations,
+    onToken: convertOptionsOnToken(opts.onToken ?? defaultOptions.onToken),
+    onComment: null, // Will be set below
+    ranges: opts.ranges ?? defaultOptions.ranges,
+    program: opts.program ?? defaultOptions.program,
+    sourceFile: opts.sourceFile ?? defaultOptions.sourceFile,
+    directSourceFile: opts.directSourceFile ?? defaultOptions.directSourceFile,
+    preserveParens: opts.preserveParens ?? defaultOptions.preserveParens,
+  };
+
+  if (isArray(opts.onComment)) {
+  } else result.onComment = opts.onComment;
+}
+
+function convertOptionsOnToken(
+  onToken: ExternalOptions["onToken"] | null,
+): Options["onToken"] {
+  if (!onToken) return null;
+  if (isArray(onToken)) {
+    let tokens = onToken;
+    return (token) => tokens.push(token);
+  }
+
+  return onToken;
+}
+
+function convertOptionsOnComment(
+  onComment: ExternalOptions["onComment"] | null,
+  options: Options,
+): Options["onComment"] {
+  if (isArray(onComment)) {
+    return pushComment(options, onComment);
+  }
+}
+
+export function getOptions(opts?: ExternalOptions): Options {
+  const ecmaVersion = convertEcmaVersion(opts?.ecmaVersion);
+  const sourceType = opts?.sourceType || defaultOptions.sourceType;
+
+  const options: Options = {
+    ...defaultOptions,
+    ...opts,
+    ecmaVersion,
+    sourceType,
+  };
+
+  // Match legacy behavior: only apply these computed defaults when the user did not set them.
+  if (opts?.allowReserved == null)
+    options.allowReserved = options.ecmaVersion < 5;
+  if (opts?.allowHashBang == null)
+    options.allowHashBang = options.ecmaVersion >= 14;
 
   if (isArray(options.onToken)) {
     let tokens = options.onToken;
     options.onToken = (token) => tokens.push(token);
   }
-  if (isArray(options.onComment)) options.onComment = pushComment(options, options.onComment);
+
+  if (isArray(opts.onComment))
+    options.onComment = pushComment(options, opts.onComment);
 
   if (options.sourceType === "commonjs" && options.allowAwaitOutsideFunction)
-    throw new Error("Cannot use allowAwaitOutsideFunction with sourceType: commonjs");
+    throw new Error(
+      "Cannot use allowAwaitOutsideFunction with sourceType: commonjs",
+    );
 
   return options;
 }
 
-function pushComment(p: Parser, options: Options, array: Array) {
-  return function (block, text, start, end, startLoc, endLoc) {
+function pushComment(options: Options, array: Comment[]) {
+  return function (
+    parser: Parser,
+    block: boolean,
+    text: string,
+    start: number,
+    end: number,
+    startLoc?: Position,
+    endLoc?: Position,
+  ) {
     let comment: Comment = {
       type: block ? "Block" : "Line",
       value: text,
       start: start,
       end: end,
     };
-    if (options.locations) comment.loc = new SourceLocation(p, startLoc, endLoc);
+
+    if (options.locations && startLoc && endLoc)
+      comment.loc = new SourceLocation(parser, startLoc, endLoc);
+
     if (options.ranges) comment.range = [start, end];
     array.push(comment);
   };

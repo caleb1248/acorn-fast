@@ -3,6 +3,7 @@ import { types as tt, type TokenType } from "./tokentype.js";
 import { lineBreak } from "./whitespace.js";
 import { getOptions } from "./options.js";
 import { wordsRegexp } from "./util.js";
+import { startNode } from "./node.js";
 import { strictDirective } from "./parseutil.js";
 import { curPosition } from "./location.js";
 import { initialContext } from "./tokencontext.js";
@@ -26,10 +27,18 @@ import {
   SCOPE_SWITCH,
 } from "./scopeflags.js";
 import type { Scope } from "./scope.js";
-import type { Options, Parser as ExposedParser, Position, Identifier, Literal } from "./acorn.d.ts";
+import type {
+  Options,
+  Parser as ExposedParser,
+  Position,
+  Identifier,
+  Literal,
+  ExternalOptions,
+} from "./acorn.d.ts";
 import { RegExpValidationState } from "./regexp.js";
 
-import { nextToken } from "./tokenize";
+import { getToken, nextToken, skipLineComment } from "./tokenize";
+import type { TokContext } from "./tokencontext.js";
 
 /**
  * @internal
@@ -45,10 +54,10 @@ export interface PrivateNameStackElement {
   used: Node[];
 }
 
-export class Parser implements ExposedParser {
+export class Parser {
   public options: Options;
-  public sourceFile: string;
-  private keywords: RegExp;
+  public sourceFile?: string | null;
+  public keywords: RegExp;
   public input: string;
   public reservedWords: RegExp;
   public reservedWordsStrict: RegExp;
@@ -58,16 +67,16 @@ export class Parser implements ExposedParser {
   public lineStart: number;
   public curLine: number;
   public type: TokenType;
-  public value: null;
+  public value: string | null; // may need to change in the future
   public start: number;
   public end: number;
-  public startLoc: Position;
-  public endLoc: Position;
-  public lastTokEndLoc: Position;
-  public lastTokStartLoc: null;
+  public startLoc?: Position;
+  public endLoc?: Position;
+  public lastTokEndLoc?: Position | null;
+  public lastTokStartLoc?: Position | null;
   public lastTokStart: number;
   public lastTokEnd: number;
-  public context: import("./tokencontext.js").TokContext[];
+  public context: TokContext[];
   public exprAllowed: boolean;
   public inModule: boolean;
   public strict: boolean;
@@ -78,24 +87,37 @@ export class Parser implements ExposedParser {
   public awaitIdentPos: number;
   public scopeStack: Scope[];
   public labels: Label[];
-  public regexpState: RegExpValidationState;
-  public undefinedExports: (Identifier | Literal)[];
+  public regexpState: RegExpValidationState | null;
+  public undefinedExports: Record<string, Identifier | Literal>;
+  public privateNameStack: PrivateNameStackElement[];
 
   constructor(options: Options, input: string, startPos?: number) {
-    this.options = options = getOptions(options);
+    this.options = options;
     this.sourceFile = options.sourceFile;
     this.keywords = wordsRegexp(
-      keywords[options.ecmaVersion >= 6 ? 6 : options.sourceType === "module" ? "5module" : 5],
+      keywords[
+        options.ecmaVersion >= 6
+          ? 6
+          : options.sourceType === "module"
+            ? "5module"
+            : 5
+      ],
     );
     let reserved = "";
     if (options.allowReserved !== true) {
-      reserved = reservedWords[options.ecmaVersion >= 6 ? 6 : options.ecmaVersion === 5 ? 5 : 3];
+      reserved =
+        reservedWords[
+          options.ecmaVersion >= 6 ? 6 : options.ecmaVersion === 5 ? 5 : 3
+        ];
       if (options.sourceType === "module") reserved += " await";
     }
     this.reservedWords = wordsRegexp(reserved);
-    let reservedStrict = (reserved ? reserved + " " : "") + reservedWords.strict;
+    let reservedStrict =
+      (reserved ? reserved + " " : "") + reservedWords.strict;
     this.reservedWordsStrict = wordsRegexp(reservedStrict);
-    this.reservedWordsStrictBind = wordsRegexp(reservedStrict + " " + reservedWords.strictBind);
+    this.reservedWordsStrictBind = wordsRegexp(
+      reservedStrict + " " + reservedWords.strictBind,
+    );
     this.input = String(input);
 
     // Used to signal to callers of `readWord1` whether the word
@@ -109,7 +131,9 @@ export class Parser implements ExposedParser {
     if (startPos) {
       this.pos = startPos;
       this.lineStart = this.input.lastIndexOf("\n", startPos - 1) + 1;
-      this.curLine = this.input.slice(0, this.lineStart).split(lineBreak).length;
+      this.curLine = this.input
+        .slice(0, this.lineStart)
+        .split(lineBreak).length;
     } else {
       this.pos = this.lineStart = 0;
       this.curLine = 1;
@@ -152,8 +176,13 @@ export class Parser implements ExposedParser {
     this.undefinedExports = Object.create(null);
 
     // If enabled, skip leading hashbang line.
-    if (this.pos === 0 && options.allowHashBang && this.input.slice(0, 2) === "#!")
-      this.skipLineComment(2);
+    if (
+      this.pos === 0 &&
+      options.allowHashBang &&
+      this.input.slice(0, 2) === "#!"
+    ) {
+      skipLineComment(this, 2);
+    }
 
     // Scope tracking for duplicate variable names (see scope.js)
     this.scopeStack = [];
@@ -175,9 +204,13 @@ export class Parser implements ExposedParser {
   }
 
   parse() {
-    let node = this.options.program || this.startNode();
+    let node = this.options.program || startNode(this);
     nextToken(this);
-    return this.parseTopLevel(node);
+    return parseTopLevel(this, node);
+  }
+
+  getToken() {
+    return getToken(this);
   }
 
   get inFunction() {
@@ -195,17 +228,22 @@ export class Parser implements ExposedParser {
   get canAwait() {
     for (let i = this.scopeStack.length - 1; i >= 0; i--) {
       let { flags } = this.scopeStack[i];
-      if (flags & (SCOPE_CLASS_STATIC_BLOCK | SCOPE_CLASS_FIELD_INIT)) return false;
+      if (flags & (SCOPE_CLASS_STATIC_BLOCK | SCOPE_CLASS_FIELD_INIT))
+        return false;
       if (flags & SCOPE_FUNCTION) return (flags & SCOPE_ASYNC) > 0;
     }
     return (
-      (this.inModule && this.options.ecmaVersion >= 13) || this.options.allowAwaitOutsideFunction
+      (this.inModule && this.options.ecmaVersion >= 13) ||
+      this.options.allowAwaitOutsideFunction
     );
   }
 
   get allowReturn() {
     if (this.inFunction) return true;
-    if (this.options.allowReturnOutsideFunction && currentVarScope(this).flags & SCOPE_TOP)
+    if (
+      this.options.allowReturnOutsideFunction &&
+      currentVarScope(this).flags & SCOPE_TOP
+    )
       return true;
     return false;
   }
@@ -252,11 +290,43 @@ export class Parser implements ExposedParser {
 
   static parseExpressionAt(input: string, pos: number, options: Options) {
     let parser = new this(options, input, pos);
-    parser.nextToken();
-    return parser.parseExpression();
+    nextToken(parser);
+    return parseExpression(parser);
   }
 
   static tokenizer(input: string, options: Options) {
+    return new this(options, input);
+  }
+}
+
+class ExternalParser implements ExposedParser {
+  private _parser: Parser;
+
+  protected constructor(
+    options: ExternalOptions,
+    input: string,
+    startPos?: number,
+  ) {
+    this._parser = new Parser(getOptions(options), input, startPos);
+  }
+
+  parse() {
+    return this._parser.parse();
+  }
+
+  static parse(input: string, options: ExternalOptions) {
+    return Parser.parse(input, getOptions(options));
+  }
+
+  static parseExpressionAt(
+    input: string,
+    pos: number,
+    options: ExternalOptions,
+  ) {
+    return Parser.parseExpressionAt(input, pos, getOptions(options));
+  }
+
+  static tokenizer(input: string, options: ExternalOptions) {
     return new this(options, input);
   }
 }

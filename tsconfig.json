@@ -8,10 +8,10 @@
     "checkJs": false,
     "noEmit": true,
     "strict": true,
-    "strictNullChecks": false,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true
+    "noImplicitAny": true,
+    "resolveJsonModule": true,
   },
-  "include": ["src-ts/**/*"]
+  "include": ["src-ts/**/*"],
 }

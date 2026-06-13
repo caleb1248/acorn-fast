@@ -1,5 +1,7 @@
 // ## Token types
 
+import type { Parser } from "./state";
+
 // The assignment of fine-grained, information-carrying type objects
 // allows the tokenizer to store the information it has about a
 // token in a way that is very cheap for the parser to look up.
@@ -21,8 +23,30 @@
 // to know when parsing a label, in order to allow or disallow
 // continue jumps to that label.
 
+interface TokenTypeConf {
+  keyword?: string;
+  beforeExpr?: boolean;
+  startsExpr?: boolean;
+  isLoop?: boolean;
+  isAssign?: boolean;
+  prefix?: boolean;
+  postfix?: boolean;
+  binop?: number;
+}
+
 export class TokenType {
-  constructor(label, conf = {}) {
+  public label: string;
+  public keyword?: string;
+  public beforeExpr: boolean;
+  public startsExpr: boolean;
+  public isLoop: boolean;
+  public isAssign: boolean;
+  public prefix: boolean;
+  public postfix: boolean;
+  public binop: number | null;
+  public updateContext: ((parser: Parser, prevType: TokenType) => void) | null;
+
+  constructor(label: string, conf: TokenTypeConf = {}) {
     this.label = label;
     this.keyword = conf.keyword;
     this.beforeExpr = !!conf.beforeExpr;
@@ -36,20 +60,22 @@ export class TokenType {
   }
 }
 
-function binop(name, prec) {
+function binop(name: string, prec: number) {
   return new TokenType(name, { beforeExpr: true, binop: prec });
 }
+
 const beforeExpr = { beforeExpr: true },
   startsExpr = { startsExpr: true };
 
 // Map keyword names to token types.
 
-export const keywords = {};
+export const keywords = new Map<string, TokenType>();
 
 // Succinct definitions of keyword token types
-function kw(name, options = {}) {
-  options.keyword = name;
-  return (keywords[name] = new TokenType(name, options));
+function kw(name: string, options: TokenTypeConf = {}) {
+  const result = new TokenType(name, { keyword: name, ...options });
+  keywords.set(name, result);
+  return result;
 }
 
 export const types = {
@@ -96,8 +122,16 @@ export const types = {
 
   eq: new TokenType("=", { beforeExpr: true, isAssign: true }),
   assign: new TokenType("_=", { beforeExpr: true, isAssign: true }),
-  incDec: new TokenType("++/--", { prefix: true, postfix: true, startsExpr: true }),
-  prefix: new TokenType("!/~", { beforeExpr: true, prefix: true, startsExpr: true }),
+  incDec: new TokenType("++/--", {
+    prefix: true,
+    postfix: true,
+    startsExpr: true,
+  }),
+  prefix: new TokenType("!/~", {
+    beforeExpr: true,
+    prefix: true,
+    startsExpr: true,
+  }),
   logicalOR: binop("||", 1),
   logicalAND: binop("&&", 2),
   bitwiseOR: binop("|", 3),
@@ -106,7 +140,12 @@ export const types = {
   equality: binop("==/!=/===/!==", 6),
   relational: binop("</>/<=/>=", 7),
   bitShift: binop("<</>>/>>>", 8),
-  plusMin: new TokenType("+/-", { beforeExpr: true, binop: 9, prefix: true, startsExpr: true }),
+  plusMin: new TokenType("+/-", {
+    beforeExpr: true,
+    binop: 9,
+    prefix: true,
+    startsExpr: true,
+  }),
   modulo: binop("%", 10),
   star: binop("*", 10),
   slash: binop("/", 10),

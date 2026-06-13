@@ -1,6 +1,15 @@
 import { Parser } from "./state.js";
 import { Position, getLineInfo } from "./locutil.js";
 
+class AcornSyntaxError extends SyntaxError {
+  public pos?: number;
+  public loc?: Position;
+  public raisedAt?: number;
+  constructor(message: string) {
+    super(message);
+  }
+}
+
 // This function is used to raise exceptions on parse errors. It
 // takes an offset integer (into the current `input`) to indicate
 // the location of the error, attaches the position to the end
@@ -13,7 +22,7 @@ export function raise(parser: Parser, pos: number, message: string) {
   if (parser.sourceFile) {
     message += " in " + parser.sourceFile;
   }
-  let err = new SyntaxError(message);
+  let err = new AcornSyntaxError(message);
   err.pos = pos;
   err.loc = loc;
   err.raisedAt = parser.pos;

@@ -1,13 +1,15 @@
+type Option<T> = T | null | undefined;
+
 export interface Node {
   start: number;
   end: number;
   type: string;
-  range?: [number, number];
-  loc?: SourceLocation | null;
+  range?: Option<[number, number]>;
+  loc?: Option<SourceLocation>;
 }
 
 export interface SourceLocation {
-  source?: string | null;
+  source?: Option<string>;
   start: Position;
   end: Position;
 }
@@ -26,7 +28,7 @@ export interface Identifier extends Node {
 
 export interface Literal extends Node {
   type: "Literal";
-  value?: string | boolean | null | number | RegExp | bigint;
+  value?: Option<string | boolean | number | RegExp | bigint>;
   raw?: string;
   regex?: {
     pattern: string;
@@ -42,7 +44,7 @@ export interface Program extends Node {
 }
 
 export interface Function extends Node {
-  id?: Identifier | null;
+  id?: Option<Identifier>;
   params: Array<Pattern>;
   body: BlockStatement | Expression;
   generator: boolean;
@@ -53,7 +55,7 @@ export interface Function extends Node {
 export interface ExpressionStatement extends Node {
   type: "ExpressionStatement";
   expression: Expression | Literal;
-  directive?: string;
+  directive?: Option<string>;
 }
 
 export interface BlockStatement extends Node {
@@ -77,7 +79,7 @@ export interface WithStatement extends Node {
 
 export interface ReturnStatement extends Node {
   type: "ReturnStatement";
-  argument?: Expression | null;
+  argument?: Option<Expression>;
 }
 
 export interface LabeledStatement extends Node {
@@ -88,19 +90,19 @@ export interface LabeledStatement extends Node {
 
 export interface BreakStatement extends Node {
   type: "BreakStatement";
-  label?: Identifier | null;
+  label?: Option<Identifier>;
 }
 
 export interface ContinueStatement extends Node {
   type: "ContinueStatement";
-  label?: Identifier | null;
+  label?: Option<Identifier>;
 }
 
 export interface IfStatement extends Node {
   type: "IfStatement";
   test: Expression;
   consequent: Statement;
-  alternate?: Statement | null;
+  alternate?: Option<Statement>;
 }
 
 export interface SwitchStatement extends Node {
@@ -111,7 +113,7 @@ export interface SwitchStatement extends Node {
 
 export interface SwitchCase extends Node {
   type: "SwitchCase";
-  test?: Expression | null;
+  test?: Option<Expression>;
   consequent: Array<Statement>;
 }
 
@@ -123,13 +125,13 @@ export interface ThrowStatement extends Node {
 export interface TryStatement extends Node {
   type: "TryStatement";
   block: BlockStatement;
-  handler?: CatchClause | null;
-  finalizer?: BlockStatement | null;
+  handler?: Option<CatchClause>;
+  finalizer?: Option<BlockStatement>;
 }
 
 export interface CatchClause extends Node {
   type: "CatchClause";
-  param?: Pattern | null;
+  param?: Option<Pattern>;
   body: BlockStatement;
 }
 
@@ -147,9 +149,9 @@ export interface DoWhileStatement extends Node {
 
 export interface ForStatement extends Node {
   type: "ForStatement";
-  init?: VariableDeclaration | Expression | null;
-  test?: Expression | null;
-  update?: Expression | null;
+  init?: Option<VariableDeclaration | Expression>;
+  test?: Option<Expression>;
+  update?: Option<Expression>;
   body: Statement;
 }
 
@@ -175,7 +177,7 @@ export interface VariableDeclaration extends Node {
 export interface VariableDeclarator extends Node {
   type: "VariableDeclarator";
   id: Pattern;
-  init?: Expression | null;
+  init?: Option<Expression>;
 }
 
 export interface ThisExpression extends Node {
@@ -214,7 +216,14 @@ export interface UnaryExpression extends Node {
   argument: Expression;
 }
 
-export type UnaryOperator = "-" | "+" | "!" | "~" | "typeof" | "void" | "delete";
+export type UnaryOperator =
+  | "-"
+  | "+"
+  | "!"
+  | "~"
+  | "typeof"
+  | "void"
+  | "delete";
 
 export interface UpdateExpression extends Node {
   type: "UpdateExpression";
@@ -346,7 +355,7 @@ export interface ArrowFunctionExpression extends Function {
 
 export interface YieldExpression extends Node {
   type: "YieldExpression";
-  argument?: Expression | null;
+  argument?: Option<Expression>;
   delegate: boolean;
 }
 
@@ -366,7 +375,7 @@ export interface TemplateElement extends Node {
   type: "TemplateElement";
   tail: boolean;
   value: {
-    cooked?: string | null;
+    cooked?: Option<string>;
     raw: string;
   };
 }
@@ -388,7 +397,7 @@ export interface ObjectPattern extends Node {
 
 export interface ArrayPattern extends Node {
   type: "ArrayPattern";
-  elements: Array<Pattern | null>;
+  elements: Array<Option<Pattern>>;
 }
 
 export interface RestElement extends Node {
@@ -403,8 +412,8 @@ export interface AssignmentPattern extends Node {
 }
 
 export interface Class extends Node {
-  id?: Identifier | null;
-  superClass?: Expression | null;
+  id?: Option<Identifier>;
+  superClass?: Option<Expression>;
   body: ClassBody;
 }
 
@@ -439,7 +448,9 @@ export interface MetaProperty extends Node {
 
 export interface ImportDeclaration extends Node {
   type: "ImportDeclaration";
-  specifiers: Array<ImportSpecifier | ImportDefaultSpecifier | ImportNamespaceSpecifier>;
+  specifiers: Array<
+    ImportSpecifier | ImportDefaultSpecifier | ImportNamespaceSpecifier
+  >;
   source: Literal;
   attributes: Array<ImportAttribute>;
 }
@@ -468,9 +479,9 @@ export interface ImportAttribute extends Node {
 
 export interface ExportNamedDeclaration extends Node {
   type: "ExportNamedDeclaration";
-  declaration?: Declaration | null;
+  declaration?: Option<Declaration>;
   specifiers: Array<ExportSpecifier>;
-  source?: Literal | null;
+  source?: Option<Literal>;
   attributes: Array<ImportAttribute>;
 }
 
@@ -504,7 +515,7 @@ export interface ExportDefaultDeclaration extends Node {
 export interface ExportAllDeclaration extends Node {
   type: "ExportAllDeclaration";
   source: Literal;
-  exported?: Identifier | Literal | null;
+  exported?: Option<Identifier | Literal>;
   attributes: Array<ImportAttribute>;
 }
 
@@ -521,7 +532,7 @@ export interface ChainExpression extends Node {
 export interface ImportExpression extends Node {
   type: "ImportExpression";
   source: Expression;
-  options: Expression | null;
+  options?: Option<Expression>;
 }
 
 export interface ParenthesizedExpression extends Node {
@@ -532,7 +543,7 @@ export interface ParenthesizedExpression extends Node {
 export interface PropertyDefinition extends Node {
   type: "PropertyDefinition";
   key: Expression | PrivateIdentifier;
-  value?: Expression | null;
+  value?: Option<Expression>;
   computed: boolean;
   static: boolean;
 }
@@ -568,7 +579,10 @@ export type Statement =
   | ForOfStatement
   | Declaration;
 
-export type Declaration = FunctionDeclaration | VariableDeclaration | ClassDeclaration;
+export type Declaration =
+  | FunctionDeclaration
+  | VariableDeclaration
+  | ClassDeclaration;
 
 export type Expression =
   | Identifier
@@ -664,7 +678,11 @@ export type AnyNode = NodeTypes[keyof NodeTypes];
 
 export function parse(input: string, options: Options): Program;
 
-export function parseExpressionAt(input: string, pos: number, options: Options): Expression;
+export function parseExpressionAt(
+  input: string,
+  pos: number,
+  options: Options,
+): Expression;
 
 export function tokenizer(
   input: string,
@@ -797,7 +815,7 @@ export interface ExternalOptions {
    * that you are not allowed to call the parser from the
    * callback—that will corrupt its internal state.
    */
-  onToken?: ((token: Token) => void) | Token[];
+  onToken: Option<((token: Token) => void) | Token[]>;
 
   /**
    * This takes a export function or an array.
@@ -816,7 +834,7 @@ export interface ExternalOptions {
    * Note that you are not allowed to call the
    * parser from the callback—that will corrupt its internal state.
    */
-  onComment?:
+  onComment: Option<
     | ((
         isBlock: boolean,
         text: string,
@@ -825,7 +843,8 @@ export interface ExternalOptions {
         startLoc?: Position,
         endLoc?: Position,
       ) => void)
-    | Comment[];
+    | Comment[]
+  >;
 
   /**
    * Nodes have their start and end characters offsets recorded in
@@ -879,21 +898,25 @@ export interface Options {
    * Can be either `"script"`, `"module"` or `"commonjs"`. This influences global
    * strict mode and parsing of `import` and `export` declarations.
    */
-  sourceType?: "script" | "module" | "commonjs";
+  sourceType?: Option<"script" | "module" | "commonjs">;
 
   /**
    * a callback that will be called when a semicolon is automatically inserted.
    * @param lastTokEnd the position of the comma as an offset
    * @param lastTokEndLoc location if {@link locations} is enabled
    */
-  onInsertedSemicolon?: (lastTokEnd: number, lastTokEndLoc?: Position) => void;
+  onInsertedSemicolon?: Option<
+    (lastTokEnd: number, lastTokEndLoc?: Position) => void
+  >;
 
   /**
    * similar to `onInsertedSemicolon`, but for trailing commas
    * @param lastTokEnd the position of the comma as an offset
    * @param lastTokEndLoc location if `locations` is enabled
    */
-  onTrailingComma?: (lastTokEnd: number, lastTokEndLoc?: Position) => void;
+  onTrailingComma?: Option<
+    (lastTokEnd: number, lastTokEndLoc?: Position) => void
+  >;
 
   /**
    * By default, reserved words are only enforced if ecmaVersion >= 5.
@@ -901,53 +924,53 @@ export interface Options {
    * an off. When this option has the value "never", reserved words
    * and keywords can also not be used as property names.
    */
-  allowReserved?: boolean | "never";
+  allowReserved?: Option<boolean | "never">;
 
   /**
    * When enabled, a return at the top level is not considered an error.
    */
-  allowReturnOutsideFunction?: boolean;
+  allowReturnOutsideFunction?: Option<boolean>;
 
   /**
    * When enabled, import/export statements are not constrained to
    * appearing at the top of the program, and an import.meta expression
    * in a script isn't considered an error.
    */
-  allowImportExportEverywhere?: boolean;
+  allowImportExportEverywhere?: Option<boolean>;
 
   /**
    * By default, `await` identifiers are allowed to appear at the top-level scope only if {@link ecmaVersion} >= 2022.
    * When enabled, await identifiers are allowed to appear at the top-level scope,
    * but they are still not allowed in non-async functions.
    */
-  allowAwaitOutsideFunction?: boolean;
+  allowAwaitOutsideFunction?: Option<boolean>;
 
   /**
    * When enabled, super identifiers are not constrained to
    * appearing in methods and do not raise an error when they appear elsewhere.
    */
-  allowSuperOutsideMethod?: boolean;
+  allowSuperOutsideMethod?: Option<boolean>;
 
   /**
    * When enabled, hashbang directive in the beginning of file is
    * allowed and treated as a line comment. Enabled by default when
    * {@link ecmaVersion} >= 2023.
    */
-  allowHashBang?: boolean;
+  allowHashBang?: Option<boolean>;
 
   /**
    * By default, the parser will verify that private properties are
    * only used in places where they are valid and have been declared.
    * Set this to false to turn such checks off.
    */
-  checkPrivateFields?: boolean;
+  checkPrivateFields?: Option<boolean>;
 
   /**
    * When `locations` is on, `loc` properties holding objects with
    * `start` and `end` properties as {@link Position} objects will be attached to the
    * nodes.
    */
-  locations?: boolean;
+  locations?: Option<boolean>;
 
   /**
    * a callback that will cause Acorn to call that export function with object in the same
@@ -955,7 +978,7 @@ export interface Options {
    * that you are not allowed to call the parser from the
    * callback—that will corrupt its internal state.
    */
-  onToken?: ((token: Token) => void) | Token[];
+  onToken?: Option<(token: Token) => void>;
 
   /**
    * This takes a export function or an array.
@@ -974,16 +997,17 @@ export interface Options {
    * Note that you are not allowed to call the
    * parser from the callback—that will corrupt its internal state.
    */
-  onComment?:
-    | ((
-        isBlock: boolean,
-        text: string,
-        start: number,
-        end: number,
-        startLoc?: Position,
-        endLoc?: Position,
-      ) => void)
-    | Comment[];
+  onComment?: Option<
+    (
+      parser: Parser,
+      isBlock: boolean,
+      text: string,
+      start: number,
+      end: number,
+      startLoc?: Position,
+      endLoc?: Position,
+    ) => void
+  >;
 
   /**
    * Nodes have their start and end characters offsets recorded in
@@ -993,7 +1017,7 @@ export interface Options {
    * end]` array with the same numbers, set the `ranges` option to
    * `true`.
    */
-  ranges?: boolean;
+  ranges?: Option<boolean>;
 
   /**
    * It is possible to parse multiple files into a single AST by
@@ -1002,24 +1026,24 @@ export interface Options {
    * toplevel forms of the parsed file to the `Program` (top) node
    * of an existing parse tree.
    */
-  program?: Node;
+  program?: Option<Node>;
 
   /**
    * When {@link locations} is on, you can pass this to record the source
    * file in every node's `loc` object.
    */
-  sourceFile?: string;
+  sourceFile?: Option<string>;
 
   /**
    * This value, if given, is stored in every node, whether {@link locations} is on or off.
    */
-  directSourceFile?: string;
+  directSourceFile?: Option<string>;
 
   /**
    * When enabled, parenthesized expressions are represented by
    * (non-standard) ParenthesizedExpression nodes
    */
-  preserveParens?: boolean;
+  preserveParens?: Option<boolean>;
 }
 
 export class Parser {
@@ -1030,7 +1054,11 @@ export class Parser {
   parse(): Program;
 
   static parse(input: string, options: Options): Program;
-  static parseExpressionAt(input: string, pos: number, options: Options): Expression;
+  static parseExpressionAt(
+    input: string,
+    pos: number,
+    options: Options,
+  ): Expression;
   static tokenizer(
     input: string,
     options: Options,
@@ -1038,7 +1066,9 @@ export class Parser {
     getToken(): Token;
     [Symbol.iterator](): Iterator<Token>;
   };
-  static extend(...plugins: ((BaseParser: typeof Parser) => typeof Parser)[]): typeof Parser;
+  static extend(
+    ...plugins: ((BaseParser: typeof Parser) => typeof Parser)[]
+  ): typeof Parser;
 }
 
 export const defaultOptions: Options;

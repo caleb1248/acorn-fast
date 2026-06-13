@@ -1,4 +1,4 @@
-import { wordsRegexp } from "./util.js";
+import { wordsRegexp } from "./util";
 import scriptValuesAddedInUnicode from "./generated/scriptValuesAddedInUnicode.js";
 
 // This file contains Unicode properties extracted from the ECMAScript specification.
@@ -10,31 +10,69 @@ const ecma9BinaryProperties =
   "ASCII ASCII_Hex_Digit AHex Alphabetic Alpha Any Assigned Bidi_Control Bidi_C Bidi_Mirrored Bidi_M Case_Ignorable CI Cased Changes_When_Casefolded CWCF Changes_When_Casemapped CWCM Changes_When_Lowercased CWL Changes_When_NFKC_Casefolded CWKCF Changes_When_Titlecased CWT Changes_When_Uppercased CWU Dash Default_Ignorable_Code_Point DI Deprecated Dep Diacritic Dia Emoji Emoji_Component Emoji_Modifier Emoji_Modifier_Base Emoji_Presentation Extender Ext Grapheme_Base Gr_Base Grapheme_Extend Gr_Ext Hex_Digit Hex IDS_Binary_Operator IDSB IDS_Trinary_Operator IDST ID_Continue IDC ID_Start IDS Ideographic Ideo Join_Control Join_C Logical_Order_Exception LOE Lowercase Lower Math Noncharacter_Code_Point NChar Pattern_Syntax Pat_Syn Pattern_White_Space Pat_WS Quotation_Mark QMark Radical Regional_Indicator RI Sentence_Terminal STerm Soft_Dotted SD Terminal_Punctuation Term Unified_Ideograph UIdeo Uppercase Upper Variation_Selector VS White_Space space XID_Continue XIDC XID_Start XIDS";
 const ecma10BinaryProperties = ecma9BinaryProperties + " Extended_Pictographic";
 const ecma11BinaryProperties = ecma10BinaryProperties;
-const ecma12BinaryProperties = ecma11BinaryProperties + " EBase EComp EMod EPres ExtPict";
+const ecma12BinaryProperties =
+  ecma11BinaryProperties + " EBase EComp EMod EPres ExtPict";
 const ecma13BinaryProperties = ecma12BinaryProperties;
 const ecma14BinaryProperties = ecma13BinaryProperties;
 
-const unicodeBinaryProperties = {
-  9: ecma9BinaryProperties,
-  10: ecma10BinaryProperties,
-  11: ecma11BinaryProperties,
-  12: ecma12BinaryProperties,
-  13: ecma13BinaryProperties,
-  14: ecma14BinaryProperties,
-};
+// const unicodeBinaryProperties = {
+//   9: ecma9BinaryProperties,
+//   10: ecma10BinaryProperties,
+//   11: ecma11BinaryProperties,
+//   12: ecma12BinaryProperties,
+//   13: ecma13BinaryProperties,
+//   14: ecma14BinaryProperties,
+// };
+
+function getUnicodeBinaryProperties(ecmaVersion: number) {
+  switch (ecmaVersion) {
+    case 9:
+      return ecma9BinaryProperties;
+    case 10:
+      return ecma10BinaryProperties;
+    case 11:
+      return ecma11BinaryProperties;
+    case 12:
+      return ecma12BinaryProperties;
+    case 13:
+      return ecma13BinaryProperties;
+    case 14:
+      return ecma14BinaryProperties;
+  }
+
+  throw new Error(
+    "unreachable - invalid ecma version passed when calling getUnicodeBinaryProperties()",
+  );
+}
 
 // #table-binary-unicode-properties-of-strings
 const ecma14BinaryPropertiesOfStrings =
   "Basic_Emoji Emoji_Keycap_Sequence RGI_Emoji_Modifier_Sequence RGI_Emoji_Flag_Sequence RGI_Emoji_Tag_Sequence RGI_Emoji_ZWJ_Sequence RGI_Emoji";
 
-const unicodeBinaryPropertiesOfStrings = {
-  9: "",
-  10: "",
-  11: "",
-  12: "",
-  13: "",
-  14: ecma14BinaryPropertiesOfStrings,
-};
+// const unicodeBinaryPropertiesOfStrings = {
+//   9: "",
+//   10: "",
+//   11: "",
+//   12: "",
+//   13: "",
+//   14: ecma14BinaryPropertiesOfStrings,
+// };
+
+function getUnicodeBinaryPropertiesOfStrings(ecmaVersion: number) {
+  switch (ecmaVersion) {
+    case 9:
+    case 10:
+    case 11:
+    case 12:
+    case 13:
+    case 14:
+      return ecma14BinaryPropertiesOfStrings;
+  }
+
+  throw new Error(
+    "unreachable - invalid ecma version passed when calling getUnicodeBinaryPropertiesOfStrings()",
+  );
+}
 
 // #table-unicode-general-category-values
 const unicodeGeneralCategoryValues =
@@ -47,41 +85,73 @@ const ecma10ScriptValues =
   ecma9ScriptValues +
   " Dogra Dogr Gunjala_Gondi Gong Hanifi_Rohingya Rohg Makasar Maka Medefaidrin Medf Old_Sogdian Sogo Sogdian Sogd";
 const ecma11ScriptValues =
-  ecma10ScriptValues + " Elymaic Elym Nandinagari Nand Nyiakeng_Puachue_Hmong Hmnp Wancho Wcho";
+  ecma10ScriptValues +
+  " Elymaic Elym Nandinagari Nand Nyiakeng_Puachue_Hmong Hmnp Wancho Wcho";
 const ecma12ScriptValues =
-  ecma11ScriptValues + " Chorasmian Chrs Diak Dives_Akuru Khitan_Small_Script Kits Yezi Yezidi";
+  ecma11ScriptValues +
+  " Chorasmian Chrs Diak Dives_Akuru Khitan_Small_Script Kits Yezi Yezidi";
 const ecma13ScriptValues =
-  ecma12ScriptValues + " Cypro_Minoan Cpmn Old_Uyghur Ougr Tangsa Tnsa Toto Vithkuqi Vith";
-const ecma14ScriptValues = ecma13ScriptValues + " " + scriptValuesAddedInUnicode;
+  ecma12ScriptValues +
+  " Cypro_Minoan Cpmn Old_Uyghur Ougr Tangsa Tnsa Toto Vithkuqi Vith";
+const ecma14ScriptValues =
+  ecma13ScriptValues + " " + scriptValuesAddedInUnicode;
 
-const unicodeScriptValues = {
-  9: ecma9ScriptValues,
-  10: ecma10ScriptValues,
-  11: ecma11ScriptValues,
-  12: ecma12ScriptValues,
-  13: ecma13ScriptValues,
-  14: ecma14ScriptValues,
-};
+function getUnicodeScriptValues(ecmaVersion: number) {
+  switch (ecmaVersion) {
+    case 9:
+      return ecma9ScriptValues;
+    case 10:
+      return ecma10ScriptValues;
+    case 11:
+      return ecma11ScriptValues;
+    case 12:
+      return ecma12ScriptValues;
+    case 13:
+      return ecma13ScriptValues;
+    case 14:
+      return ecma14ScriptValues;
+  }
 
-const data = {};
-function buildUnicodeData(ecmaVersion) {
-  const d = (data[ecmaVersion] = {
-    binary: wordsRegexp(unicodeBinaryProperties[ecmaVersion] + " " + unicodeGeneralCategoryValues),
-    binaryOfStrings: wordsRegexp(unicodeBinaryPropertiesOfStrings[ecmaVersion]),
+  throw new Error(
+    "unreachable - invalid ecma version passed when calling getUnicodeScriptValues()",
+  );
+}
+
+interface UnicodePropertyData {
+  binary: RegExp;
+  binaryOfStrings: RegExp;
+  nonBinary: {
+    General_Category: RegExp;
+    Script: RegExp;
+    Script_Extensions: RegExp;
+    gc: RegExp;
+    sc: RegExp;
+    scx: RegExp;
+  };
+}
+
+export default function getUnicodePropertyValues(
+  ecmaVersion: number,
+): UnicodePropertyData {
+  const gc = wordsRegexp(unicodeGeneralCategoryValues);
+  const sc = wordsRegexp(getUnicodeScriptValues(ecmaVersion));
+
+  return {
+    binary: wordsRegexp(
+      getUnicodeBinaryProperties(ecmaVersion) +
+        " " +
+        unicodeGeneralCategoryValues,
+    ),
+    binaryOfStrings: wordsRegexp(
+      getUnicodeBinaryPropertiesOfStrings(ecmaVersion),
+    ),
     nonBinary: {
-      General_Category: wordsRegexp(unicodeGeneralCategoryValues),
-      Script: wordsRegexp(unicodeScriptValues[ecmaVersion]),
+      gc,
+      sc,
+      General_Category: gc,
+      Script: sc,
+      Script_Extensions: sc,
+      scx: sc,
     },
-  });
-  d.nonBinary.Script_Extensions = d.nonBinary.Script;
-
-  d.nonBinary.gc = d.nonBinary.General_Category;
-  d.nonBinary.sc = d.nonBinary.Script;
-  d.nonBinary.scx = d.nonBinary.Script_Extensions;
+  };
 }
-
-for (const ecmaVersion of [9, 10, 11, 12, 13, 14]) {
-  buildUnicodeData(ecmaVersion);
-}
-
-export default data;

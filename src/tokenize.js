@@ -698,10 +698,10 @@ pp.readString = function (quote) {
 
 const INVALID_TEMPLATE_ESCAPE_ERROR = {};
 
-pp.tryReadTemplateToken = function () {
-  this.inTemplateElement = true;
+export function tryReadTemplateToken(parser: Parser) {
+  parser.inTemplateElement = true;
   try {
-    this.readTmplToken();
+    readTmplToken(parser);
   } catch (err) {
     if (err === INVALID_TEMPLATE_ESCAPE_ERROR) {
       this.readInvalidTemplateToken();

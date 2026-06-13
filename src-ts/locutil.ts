@@ -12,16 +12,12 @@ export class Position implements _Position {
     this.line = line;
     this.column = col;
   }
-
-  offset(n: number) {
-    return new Position(this.line, this.column + n);
-  }
 }
 
 export class SourceLocation {
   public start: Position;
   public end: Position;
-  public source: string | null;
+  public source?: string;
 
   constructor(p: Parser, start: Position, end: Position) {
     this.start = start;

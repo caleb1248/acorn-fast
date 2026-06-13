@@ -1,10 +1,12 @@
 const { hasOwnProperty, toString } = Object.prototype;
 
-export const hasOwn = Object.hasOwn || ((obj, propName) => hasOwnProperty.call(obj, propName));
+export const hasOwn =
+  Object.hasOwn || ((obj, propName) => hasOwnProperty.call(obj, propName));
 
-export const isArray = Array.isArray || ((obj) => toString.call(obj) === "[object Array]");
+export const isArray =
+  Array.isArray || ((obj) => toString.call(obj) === "[object Array]");
 
-const regexpCache = Object.create(null);
+const regexpCache: Record<string, RegExp> = Object.create(null);
 
 export function wordsRegexp(words: string) {
   return (

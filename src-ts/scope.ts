@@ -11,9 +11,18 @@ import {
   SCOPE_CLASS_FIELD_INIT,
   SCOPE_CLASS_STATIC_BLOCK,
 } from "./scopeflags.js";
+import { raiseRecoverable } from "./location";
+import { Identifier } from "./acorn";
 
-class Scope {
-  constructor(flags) {
+type Flags = number;
+
+export class Scope {
+  public flags: Flags;
+  var: string[];
+  lexical: string[];
+  functions: string[];
+
+  constructor(flags: Flags) {
     this.flags = flags;
     // A list of var-declared names in the current lexical scope
     this.var = [];
@@ -26,87 +35,112 @@ class Scope {
 
 // The functions in this module keep track of declared variables in the current scope in order to detect duplicate variable names.
 
-export function enterScope(parser: Parser, flags) {
+export function enterScope(parser: Parser, flags: Flags) {
   parser.scopeStack.push(new Scope(flags));
 }
 
-export function exitScope(parser: Parser, flags) {
+export function exitScope(parser: Parser) {
   parser.scopeStack.pop();
 }
 
 // The spec says:
 // > At the top level of a function, or script, function declarations are
 // > treated like var declarations rather than like lexical declarations.
-pp.treatFunctionsAsVarInScope = function (scope) {
-  return scope.flags & SCOPE_FUNCTION || (!this.inModule && scope.flags & SCOPE_TOP);
-};
+export function treatFunctionsAsVarInScope(parser: Parser, scope: Scope) {
+  return (
+    scope.flags & SCOPE_FUNCTION ||
+    (!parser.inModule && scope.flags & SCOPE_TOP)
+  );
+}
 
-pp.declareName = function (name, bindingType, pos) {
+export function declareName(
+  parser: Parser,
+  name: string,
+  bindingType: number,
+  pos: number,
+) {
   let redeclared = false;
   if (bindingType === BIND_LEXICAL) {
-    const scope = this.currentScope();
+    const scope = currentScope(parser);
     redeclared =
       scope.lexical.indexOf(name) > -1 ||
       scope.functions.indexOf(name) > -1 ||
       scope.var.indexOf(name) > -1;
     scope.lexical.push(name);
-    if (this.inModule && scope.flags & SCOPE_TOP) delete this.undefinedExports[name];
+    if (parser.inModule && scope.flags & SCOPE_TOP)
+      delete parser.undefinedExports[name];
   } else if (bindingType === BIND_SIMPLE_CATCH) {
-    const scope = this.currentScope();
+    const scope = currentScope(parser);
     scope.lexical.push(name);
   } else if (bindingType === BIND_FUNCTION) {
-    const scope = this.currentScope();
-    if (this.treatFunctionsAsVar) redeclared = scope.lexical.indexOf(name) > -1;
-    else redeclared = scope.lexical.indexOf(name) > -1 || scope.var.indexOf(name) > -1;
+    const scope = currentScope(parser);
+    if (parser.treatFunctionsAsVar)
+      redeclared = scope.lexical.indexOf(name) > -1;
+    else
+      redeclared =
+        scope.lexical.indexOf(name) > -1 || scope.var.indexOf(name) > -1;
     scope.functions.push(name);
   } else {
-    for (let i = this.scopeStack.length - 1; i >= 0; --i) {
-      const scope = this.scopeStack[i];
+    for (let i = parser.scopeStack.length - 1; i >= 0; --i) {
+      const scope = parser.scopeStack[i];
       if (
         (scope.lexical.indexOf(name) > -1 &&
           !(scope.flags & SCOPE_SIMPLE_CATCH && scope.lexical[0] === name)) ||
-        (!this.treatFunctionsAsVarInScope(scope) && scope.functions.indexOf(name) > -1)
+        (!treatFunctionsAsVarInScope(parser, scope) &&
+          scope.functions.indexOf(name) > -1)
       ) {
         redeclared = true;
         break;
       }
       scope.var.push(name);
-      if (this.inModule && scope.flags & SCOPE_TOP) delete this.undefinedExports[name];
+      if (parser.inModule && scope.flags & SCOPE_TOP)
+        delete parser.undefinedExports[name];
       if (scope.flags & SCOPE_VAR) break;
     }
   }
-  if (redeclared) this.raiseRecoverable(pos, `Identifier '${name}' has already been declared`);
-};
+  if (redeclared)
+    raiseRecoverable(
+      parser,
+      pos,
+      `Identifier '${name}' has already been declared`,
+    );
+}
 
-pp.checkLocalExport = function (id) {
+export function checkLocalExport(parser: Parser, id: Identifier) {
   // scope.functions must be empty as Module code is always strict.
   if (
-    this.scopeStack[0].lexical.indexOf(id.name) === -1 &&
-    this.scopeStack[0].var.indexOf(id.name) === -1
+    parser.scopeStack[0].lexical.indexOf(id.name) === -1 &&
+    parser.scopeStack[0].var.indexOf(id.name) === -1
   ) {
-    this.undefinedExports[id.name] = id;
+    parser.undefinedExports[id.name] = id;
   }
-};
+}
 
-pp.currentScope = function () {
-  return this.scopeStack[this.scopeStack.length - 1];
-};
+export function currentScope(parser: Parser) {
+  return parser.scopeStack[parser.scopeStack.length - 1];
+}
 
-pp.currentVarScope = function () {
-  for (let i = this.scopeStack.length - 1; ; i--) {
-    let scope = this.scopeStack[i];
-    if (scope.flags & (SCOPE_VAR | SCOPE_CLASS_FIELD_INIT | SCOPE_CLASS_STATIC_BLOCK)) return scope;
+export function currentVarScope(parser: Parser) {
+  for (let i = parser.scopeStack.length - 1; ; i--) {
+    let scope = parser.scopeStack[i];
+    if (
+      scope.flags &
+      (SCOPE_VAR | SCOPE_CLASS_FIELD_INIT | SCOPE_CLASS_STATIC_BLOCK)
+    )
+      return scope;
   }
-};
+}
 
 // Could be useful for `this`, `new.target`, `super()`, `super.property`, and `super[property]`.
-pp.currentThisScope = function () {
-  for (let i = this.scopeStack.length - 1; ; i--) {
-    let scope = this.scopeStack[i];
+export function currentThisScope(parser: Parser) {
+  for (let i = parser.scopeStack.length - 1; ; i--) {
+    let scope = parser.scopeStack[i];
+
     if (
-      scope.flags & (SCOPE_VAR | SCOPE_CLASS_FIELD_INIT | SCOPE_CLASS_STATIC_BLOCK) &&
+      scope.flags &
+        (SCOPE_VAR | SCOPE_CLASS_FIELD_INIT | SCOPE_CLASS_STATIC_BLOCK) &&
       !(scope.flags & SCOPE_ARROW)
     )
       return scope;
   }
-};
+}

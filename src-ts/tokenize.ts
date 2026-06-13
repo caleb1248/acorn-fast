@@ -1,62 +1,69 @@
 import { isIdentifierStart, isIdentifierChar } from "./identifier.js";
-import { types as tt, keywords as keywordTypes } from "./tokentype.js";
-import { Parser } from "./state.js";
+import { types as tt, keywords as keywordTypes, TokenType } from "./tokentype.js";
+import type { Parser } from "./state.js";
 import { SourceLocation } from "./locutil.js";
 import { RegExpValidationState } from "./regexp.js";
-import { lineBreak, nextLineBreak, isNewLine, nonASCIIwhitespace } from "./whitespace.js";
-import { codePointToString } from "./util.js";
+import { lineBreak, nextLineBreak, isNewLine, nonASCIIwhitespace } from "./whitespace";
+import { codePointToString } from "./util";
+import { raise, raiseRecoverable, curPosition } from "./location";
+import { curContext as _curContext, updateContext } from "./tokencontext";
 
 // Object type used to represent tokens. Note that normally, tokens
 // simply exist as properties on the parser object. This is only
 // used for the onToken callback and the external tokenizer.
 
 export class Token {
-  constructor(p) {
+  public type: TokenType;
+  public value: string | null; // may need to change
+  public start: number;
+  public end: number;
+  public loc?: SourceLocation;
+  public range?: [number, number];
+
+  constructor(p: Parser) {
     this.type = p.type;
     this.value = p.value;
     this.start = p.start;
     this.end = p.end;
-    if (p.options.locations) this.loc = new SourceLocation(p, p.startLoc, p.endLoc);
+    if (p.options.locations && p.startLoc && p.endLoc)
+      this.loc = new SourceLocation(p, p.startLoc, p.endLoc);
     if (p.options.ranges) this.range = [p.start, p.end];
   }
 }
 
-// ## Tokenizer
-
-const pp = Parser.prototype;
-
 // Move to the next token
 
-pp.next = function (ignoreEscapeSequenceInKeyword) {
-  if (!ignoreEscapeSequenceInKeyword && this.type.keyword && this.containsEsc)
-    this.raiseRecoverable(this.start, "Escape sequence in keyword " + this.type.keyword);
-  if (this.options.onToken) this.options.onToken(new Token(this));
+export function next(parser: Parser, ignoreEscapeSequenceInKeyword = false) {
+  if (!ignoreEscapeSequenceInKeyword && parser.type.keyword && parser.containsEsc)
+    raiseRecoverable(parser, parser.start, "Escape sequence in keyword " + parser.type.keyword);
+  if (parser.options.onToken) parser.options.onToken(new Token(parser));
 
-  this.lastTokEnd = this.end;
-  this.lastTokStart = this.start;
-  this.lastTokEndLoc = this.endLoc;
-  this.lastTokStartLoc = this.startLoc;
-  this.nextToken();
-};
+  parser.lastTokEnd = parser.end;
+  parser.lastTokStart = parser.start;
+  parser.lastTokEndLoc = parser.endLoc;
+  parser.lastTokStartLoc = parser.startLoc;
+  nextToken(parser);
+}
 
-pp.getToken = function () {
-  this.next();
-  return new Token(this);
-};
+export function getToken(parser: Parser) {
+  next(parser);
+  return new Token(parser);
+}
 
 // If we're in an ES6 environment, make parsers iterable
-if (typeof Symbol !== "undefined")
-  pp[Symbol.iterator] = function () {
-    return {
-      next: () => {
-        let token = this.getToken();
-        return {
-          done: token.type === tt.eof,
-          value: token,
-        };
-      },
-    };
-  };
+if (typeof Symbol !== "undefined") {
+  // pp[Symbol.iterator] = function () {
+  //   return {
+  //     next: () => {
+  //       let token = this.getToken();
+  //       return {
+  //         done: token.type === tt.eof,
+  //         value: token,
+  //       };
+  //     },
+  //   };
+  // };
+}
 
 // Toggle strict mode. Re-reads the next number or string to please
 // pedantic tests (`"use strict"; 010;` should fail).
@@ -64,113 +71,114 @@ if (typeof Symbol !== "undefined")
 // Read a single token, updating the parser object's token-related
 // properties.
 
-pp.nextToken = function () {
-  let curContext = this.curContext();
-  if (!curContext || !curContext.preserveSpace) this.skipSpace();
+export function nextToken(parser: Parser) {
+  let curContext = _curContext(parser);
+  if (!curContext || !curContext.preserveSpace) skipSpace(parser);
 
-  this.start = this.pos;
-  if (this.options.locations) this.startLoc = this.curPosition();
-  if (this.pos >= this.input.length) return this.finishToken(tt.eof);
+  parser.start = parser.pos;
+  if (parser.options.locations) parser.startLoc = curPosition(parser);
+  if (parser.pos >= parser.input.length) return finishToken(parser, tt.eof, null);
 
-  if (curContext.override) return curContext.override(this);
-  else this.readToken(this.fullCharCodeAtPos());
-};
+  if (curContext.override) return curContext.override(parser);
+  else readToken(parser, fullCharCodeAtPos(parser));
+}
 
-pp.readToken = function (code) {
+export function readToken(parser: Parser, code: number) {
   // Identifier or keyword. '\uXXXX' sequences are allowed in
   // identifiers, so '\' also dispatches to that.
-  if (isIdentifierStart(code, this.options.ecmaVersion >= 6) || code === 92 /* '\' */)
-    return this.readWord();
+  if (isIdentifierStart(code, parser.options.ecmaVersion >= 6) || code === 92 /* '\' */)
+    return readWord(parser);
 
-  return this.getTokenFromCode(code);
-};
+  return getTokenFromCode(parser, code);
+}
 
-pp.fullCharCodeAt = function (pos) {
-  let code = this.input.charCodeAt(pos);
+export function fullCharCodeAt(parser: Parser, pos: number) {
+  let code = parser.input.charCodeAt(pos);
   if (code <= 0xd7ff || code >= 0xdc00) return code;
-  let next = this.input.charCodeAt(pos + 1);
+  let next = parser.input.charCodeAt(pos + 1);
   return next <= 0xdbff || next >= 0xe000 ? code : (code << 10) + next - 0x35fdc00;
-};
+}
 
-pp.fullCharCodeAtPos = function () {
-  return this.fullCharCodeAt(this.pos);
-};
+export function fullCharCodeAtPos(parser: Parser) {
+  return fullCharCodeAt(parser, parser.pos);
+}
 
-pp.skipBlockComment = function () {
-  let startLoc = this.options.onComment && this.curPosition();
-  let start = this.pos,
-    end = this.input.indexOf("*/", (this.pos += 2));
-  if (end === -1) this.raise(this.pos - 2, "Unterminated comment");
-  this.pos = end + 2;
-  if (this.options.locations) {
+export function skipBlockComment(parser: Parser) {
+  let startLoc = parser.options.onComment && curPosition(parser);
+  let start = parser.pos,
+    end = parser.input.indexOf("*/", (parser.pos += 2));
+  if (end === -1) raise(parser, parser.pos - 2, "Unterminated comment");
+  parser.pos = end + 2;
+  if (parser.options.locations) {
     for (
       let nextBreak, pos = start;
-      (nextBreak = nextLineBreak(this.input, pos, this.pos)) > -1;
+      (nextBreak = nextLineBreak(parser.input, pos, parser.pos)) > -1;
     ) {
-      ++this.curLine;
-      pos = this.lineStart = nextBreak;
+      ++parser.curLine;
+      pos = parser.lineStart = nextBreak;
     }
   }
-  if (this.options.onComment)
-    this.options.onComment(
+  if (parser.options.onComment)
+    parser.options.onComment(
       true,
-      this.input.slice(start + 2, end),
+      parser.input.slice(start + 2, end),
       start,
-      this.pos,
+      parser.pos,
       startLoc,
-      this.curPosition(),
+      curPosition(parser),
     );
-};
+}
 
-pp.skipLineComment = function (startSkip) {
-  let start = this.pos;
-  let startLoc = this.options.onComment && this.curPosition();
-  let ch = this.input.charCodeAt((this.pos += startSkip));
-  while (this.pos < this.input.length && !isNewLine(ch)) {
-    ch = this.input.charCodeAt(++this.pos);
+export function skipLineComment(parser: Parser, startSkip: number) {
+  let start = parser.pos;
+  let startLoc = parser.options.onComment && curPosition(parser);
+  let ch = parser.input.charCodeAt((parser.pos += startSkip));
+  while (parser.pos < parser.input.length && !isNewLine(ch)) {
+    ch = parser.input.charCodeAt(++parser.pos);
   }
-  if (this.options.onComment)
-    this.options.onComment(
+  if (parser.options.onComment)
+    parser.options.onComment(
+      parser,
       false,
-      this.input.slice(start + startSkip, this.pos),
+      parser.input.slice(start + startSkip, parser.pos),
       start,
-      this.pos,
+      parser.pos,
       startLoc,
-      this.curPosition(),
+      curPosition(parser),
     );
-};
+}
 
 // Called at the start of the parse and after every token. Skips
 // whitespace and comments, and.
 
-pp.skipSpace = function () {
-  loop: while (this.pos < this.input.length) {
-    let ch = this.input.charCodeAt(this.pos);
+export function skipSpace(parser: Parser) {
+  loop: while (parser.pos < parser.input.length) {
+    let ch = parser.input.charCodeAt(parser.pos);
     switch (ch) {
       case 32:
       case 160: // ' '
-        ++this.pos;
+        ++parser.pos;
         break;
       case 13:
-        if (this.input.charCodeAt(this.pos + 1) === 10) {
-          ++this.pos;
+        if (parser.input.charCodeAt(parser.pos + 1) === 10) {
+          ++parser.pos;
         }
       case 10:
       case 8232:
       case 8233:
-        ++this.pos;
-        if (this.options.locations) {
-          ++this.curLine;
-          this.lineStart = this.pos;
+        ++parser.pos;
+        if (parser.options.locations) {
+          ++parser.curLine;
+          parser.lineStart = parser.pos;
         }
         break;
       case 47: // '/'
-        switch (this.input.charCodeAt(this.pos + 1)) {
+        switch (parser.input.charCodeAt(parser.pos + 1)) {
           case 42: // '*'
-            this.skipBlockComment();
+            skipBlockComment(parser);
             break;
           case 47:
-            this.skipLineComment(2);
+            skipLineComment(parser, 2);
             break;
           default:
             break loop;
@@ -181,28 +189,28 @@ pp.skipSpace = function () {
           (ch > 8 && ch < 14) ||
           (ch >= 5760 && nonASCIIwhitespace.test(String.fromCharCode(ch)))
         ) {
-          ++this.pos;
+          ++parser.pos;
         } else {
           break loop;
         }
     }
   }
-};
+}
 
 // Called at the end of every token. Sets `end`, `val`, and
 // maintains `context` and `exprAllowed`, and skips the space after
 // the token, so that the next one's `start` will point at the
 // right position.
 
-pp.finishToken = function (type, val) {
-  this.end = this.pos;
-  if (this.options.locations) this.endLoc = this.curPosition();
-  let prevType = this.type;
-  this.type = type;
-  this.value = val;
+export function finishToken(parser: Parser, type: TokenType, val: string | null) {
+  parser.end = parser.pos;
+  if (parser.options.locations) parser.endLoc = curPosition(parser);
+  let prevType = parser.type;
+  parser.type = type;
+  parser.value = val;
 
-  this.updateContext(prevType);
-};
+  updateContext(parser, prevType);
+}
 
 // ### Token reading
 
@@ -227,16 +235,16 @@ pp.readToken_dot = function () {
   }
 };
 
-pp.readToken_slash = function () {
+export function readToken_slash(parser: Parser) {
   // '/'
-  let next = this.input.charCodeAt(this.pos + 1);
-  if (this.exprAllowed) {
-    ++this.pos;
-    return this.readRegexp();
+  let next = parser.input.charCodeAt(parser.pos + 1);
+  if (parser.exprAllowed) {
+    ++parser.pos;
+    return readRegexp(parser);
   }
-  if (next === 61) return this.finishOp(tt.assign, 2);
-  return this.finishOp(tt.slash, 1);
-};
+  if (next === 61) return finishOp(parser, tt.assign, 2);
+  return finishOp(parser, tt.slash, 1);
+}
 
 pp.readToken_mult_modulo_exp = function (code) {
   // '%*'
@@ -276,51 +284,52 @@ pp.readToken_caret = function () {
   return this.finishOp(tt.bitwiseXOR, 1);
 };
 
-pp.readToken_plus_min = function (code) {
+export function readToken_plus_min(parser: Parser, code: number) {
   // '+-'
-  let next = this.input.charCodeAt(this.pos + 1);
+  let next = parser.input.charCodeAt(parser.pos + 1);
   if (next === code) {
     if (
       next === 45 &&
-      !this.inModule &&
-      this.input.charCodeAt(this.pos + 2) === 62 &&
-      (this.lastTokEnd === 0 || lineBreak.test(this.input.slice(this.lastTokEnd, this.pos)))
+      !parser.inModule &&
+      parser.input.charCodeAt(parser.pos + 2) === 62 &&
+      (parser.lastTokEnd === 0 || lineBreak.test(parser.input.slice(parser.lastTokEnd, parser.pos)))
     ) {
       // A `-->` line comment
-      this.skipLineComment(3);
-      this.skipSpace();
-      return this.nextToken();
+      skipLineComment(parser, 3);
+      skipSpace(parser);
+      return nextToken(parser);
     }
-    return this.finishOp(tt.incDec, 2);
+    return finishOp(parser, tt.incDec, 2);
   }
-  if (next === 61) return this.finishOp(tt.assign, 2);
-  return this.finishOp(tt.plusMin, 1);
-};
+  if (next === 61) return finishOp(parser, tt.assign, 2);
+  return finishOp(parser, tt.plusMin, 1);
+}
 
-pp.readToken_lt_gt = function (code) {
+export function readToken_lt_gt(parser: Parser, code: number) {
   // '<>'
-  let next = this.input.charCodeAt(this.pos + 1);
+  let next = parser.input.charCodeAt(parser.pos + 1);
   let size = 1;
   if (next === code) {
-    size = code === 62 && this.input.charCodeAt(this.pos + 2) === 62 ? 3 : 2;
-    if (this.input.charCodeAt(this.pos + size) === 61) return this.finishOp(tt.assign, size + 1);
-    return this.finishOp(tt.bitShift, size);
+    size = code === 62 && parser.input.charCodeAt(parser.pos + 2) === 62 ? 3 : 2;
+    if (parser.input.charCodeAt(parser.pos + size) === 61)
+      return finishOp(parser, tt.assign, size + 1);
+    return finishOp(parser, tt.bitShift, size);
   }
   if (
     next === 33 &&
     code === 60 &&
-    !this.inModule &&
-    this.input.charCodeAt(this.pos + 2) === 45 &&
-    this.input.charCodeAt(this.pos + 3) === 45
+    !parser.inModule &&
+    parser.input.charCodeAt(parser.pos + 2) === 45 &&
+    parser.input.charCodeAt(parser.pos + 3) === 45
   ) {
     // `<!--`, an XML-style comment that should be interpreted as a line comment
-    this.skipLineComment(4);
-    this.skipSpace();
-    return this.nextToken();
+    skipLineComment(parser, 4);
+    skipSpace(parser);
+    return nextToken(parser);
   }
   if (next === 61) size = 2;
-  return this.finishOp(tt.relational, size);
-};
+  return finishOp(parser, tt.relational, size);
+}
 
 pp.readToken_eq_excl = function (code) {
   // '=!'
@@ -370,7 +379,7 @@ pp.readToken_numberSign = function () {
   this.raise(this.pos, "Unexpected character '" + codePointToString(code) + "'");
 };
 
-pp.getTokenFromCode = function (code) {
+export function getTokenFromCode(parser: Parser, code: number) {
   switch (code) {
     // The interpretation of a dot depends on whether it is followed
     // by a digit or another two dots.
@@ -380,36 +389,36 @@ pp.getTokenFromCode = function (code) {
     // Punctuation tokens.
     case 40:
       ++this.pos;
-      return this.finishToken(tt.parenL);
+      return finishToken(parser, tt.parenL);
     case 41:
       ++this.pos;
-      return this.finishToken(tt.parenR);
+      return finishToken(parser, tt.parenR);
     case 59:
       ++this.pos;
-      return this.finishToken(tt.semi);
+      return finishToken(parser, tt.semi);
     case 44:
       ++this.pos;
-      return this.finishToken(tt.comma);
+      return finishToken(parser, tt.comma);
     case 91:
       ++this.pos;
-      return this.finishToken(tt.bracketL);
+      return finishToken(parser, tt.bracketL);
     case 93:
       ++this.pos;
-      return this.finishToken(tt.bracketR);
+      return finishToken(parser, tt.bracketR);
     case 123:
       ++this.pos;
-      return this.finishToken(tt.braceL);
+      return finishToken(parser, tt.braceL);
     case 125:
       ++this.pos;
-      return this.finishToken(tt.braceR);
+      return finishToken(parser, tt.braceR);
     case 58:
       ++this.pos;
-      return this.finishToken(tt.colon);
+      return finishToken(parser, tt.colon);
 
     case 96: // '`'
       if (this.options.ecmaVersion < 6) break;
       ++this.pos;
-      return this.finishToken(tt.backQuote);
+      return finishToken(parser, tt.backQuote);
 
     case 48: // '0'
       let next = this.input.charCodeAt(this.pos + 1);
@@ -478,85 +487,95 @@ pp.getTokenFromCode = function (code) {
   }
 
   this.raise(this.pos, "Unexpected character '" + codePointToString(code) + "'");
-};
+}
 
-pp.finishOp = function (type, size) {
-  let str = this.input.slice(this.pos, this.pos + size);
-  this.pos += size;
-  return this.finishToken(type, str);
-};
+export function finishOp(parser: Parser, type: TokenType, size: number) {
+  let str = parser.input.slice(parser.pos, parser.pos + size);
+  parser.pos += size;
+  return finishToken(parser, type, str);
+}
 
-pp.readRegexp = function () {
+export function readRegexp(parser: Parser) {
   let escaped,
     inClass,
-    start = this.pos;
+    start = parser.pos;
   for (;;) {
-    if (this.pos >= this.input.length) this.raise(start, "Unterminated regular expression");
-    let ch = this.input.charAt(this.pos);
-    if (lineBreak.test(ch)) this.raise(start, "Unterminated regular expression");
+    if (parser.pos >= parser.input.length) raise(parser, start, "Unterminated regular expression");
+    let ch = parser.input.charAt(parser.pos);
+    if (lineBreak.test(ch)) raise(parser, start, "Unterminated regular expression");
     if (!escaped) {
       if (ch === "[") inClass = true;
       else if (ch === "]" && inClass) inClass = false;
       else if (ch === "/" && !inClass) break;
       escaped = ch === "\\";
     } else escaped = false;
-    ++this.pos;
+    ++parser.pos;
   }
-  let pattern = this.input.slice(start, this.pos);
-  ++this.pos;
-  let flagsStart = this.pos;
-  let flags = this.readWord1();
-  if (this.containsEsc) this.unexpected(flagsStart);
+  let pattern = parser.input.slice(start, parser.pos);
+  ++parser.pos;
+  let flagsStart = parser.pos;
+  let flags = readWord1(parser);
+  if (parser.containsEsc) unexpected(flagsStart);
 
   // Validate pattern
-  const state = this.regexpState || (this.regexpState = new RegExpValidationState(this));
+  const state = parser.regexpState || (parser.regexpState = new RegExpValidationState(parser));
   state.reset(start, pattern, flags);
-  this.validateRegExpFlags(state);
-  this.validateRegExpPattern(state);
+  validateRegExpFlags(parser, state);
+  validateRegExpPattern(parser, state);
 
   // Create Literal#value property value.
   let value = null;
   try {
     value = new RegExp(pattern, flags);
-  } catch (e) {
+  } catch {
     // ESTree requires null if it failed to instantiate RegExp object.
     // https://github.com/estree/estree/blob/a27003adf4fd7bfad44de9cef372a2eacd527b1c/es5.md#regexpliteral
   }
 
-  return this.finishToken(tt.regexp, { pattern, flags, value });
-};
+  return finishToken(parser, tt.regexp, { pattern, flags, value });
+}
 
 // Read an integer in the given radix. Return null if zero digits
 // were read, the integer value otherwise. When `len` is given, this
 // will return `null` unless the integer has exactly `len` digits.
 
-pp.readInt = function (radix, len, maybeLegacyOctalNumericLiteral) {
+export function readInt(
+  parser: Parser,
+  radix: number,
+  len?: number,
+  maybeLegacyOctalNumericLiteral?: boolean,
+) {
   // `len` is used for character escape sequences. In that case, disallow separators.
-  const allowSeparators = this.options.ecmaVersion >= 12 && len === undefined;
+  const allowSeparators = parser.options.ecmaVersion >= 12 && len === undefined;
 
   // `maybeLegacyOctalNumericLiteral` is true if it doesn't have prefix (0x,0o,0b)
   // and isn't fraction part nor exponent part. In that case, if the first digit
   // is zero then disallow separators.
   const isLegacyOctalNumericLiteral =
-    maybeLegacyOctalNumericLiteral && this.input.charCodeAt(this.pos) === 48;
+    maybeLegacyOctalNumericLiteral && parser.input.charCodeAt(parser.pos) === 48;
 
-  let start = this.pos,
+  let start = parser.pos,
     total = 0,
     lastCode = 0;
-  for (let i = 0, e = len == null ? Infinity : len; i < e; ++i, ++this.pos) {
-    let code = this.input.charCodeAt(this.pos),
+  for (let i = 0, e = len == null ? Infinity : len; i < e; ++i, ++parser.pos) {
+    let code = parser.input.charCodeAt(parser.pos),
       val;
 
     if (allowSeparators && code === 95) {
       if (isLegacyOctalNumericLiteral)
-        this.raiseRecoverable(
-          this.pos,
+        raiseRecoverable(
+          parser,
+          parser.pos,
           "Numeric separator is not allowed in legacy octal numeric literals",
         );
       if (lastCode === 95)
-        this.raiseRecoverable(this.pos, "Numeric separator must be exactly one underscore");
+        raiseRecoverable(parser, parser.pos, "Numeric separator must be exactly one underscore");
       if (i === 0)
-        this.raiseRecoverable(this.pos, "Numeric separator is not allowed at the first of digits");
+        raiseRecoverable(
+          parser,
+          parser.pos,
+          "Numeric separator is not allowed at the first of digits",
+        );
       lastCode = code;
       continue;
     }
@@ -574,11 +593,15 @@ pp.readInt = function (radix, len, maybeLegacyOctalNumericLiteral) {
   }
 
   if (allowSeparators && lastCode === 95)
-    this.raiseRecoverable(this.pos - 1, "Numeric separator is not allowed at the last of digits");
-  if (this.pos === start || (len != null && this.pos - start !== len)) return null;
+    raiseRecoverable(
+      parser,
+      parser.pos - 1,
+      "Numeric separator is not allowed at the last of digits",
+    );
+  if (parser.pos === start || (len != null && parser.pos - start !== len)) return null;
 
   return total;
-};
+}
 
 function stringToNumber(str, isLegacyOctalNumericLiteral) {
   if (isLegacyOctalNumericLiteral) {
@@ -598,18 +621,18 @@ function stringToBigInt(str) {
   return BigInt(str.replace(/_/g, ""));
 }
 
-pp.readRadixNumber = function (radix) {
-  let start = this.pos;
-  this.pos += 2; // 0x
-  let val = this.readInt(radix);
+export function readRadixNumber(parser: Parser, radix) {
+  let start = parser.pos;
+  parser.pos += 2; // 0x
+  let val = readInt(parser, radix);
   if (val == null) this.raise(this.start + 2, "Expected number in radix " + radix);
   if (this.options.ecmaVersion >= 11 && this.input.charCodeAt(this.pos) === 110) {
     val = stringToBigInt(this.input.slice(start, this.pos));
     ++this.pos;
   } else if (isIdentifierStart(this.fullCharCodeAtPos()))
     this.raise(this.pos, "Identifier directly after number");
-  return this.finishToken(tt.num, val);
-};
+  return finishToken(parser, tt.num, val);
+}
 
 // Read an integer, octal integer, or floating-point number.
 
@@ -649,22 +672,22 @@ pp.readNumber = function (startsWithDot) {
 
 // Read a string value, interpreting backslash-escapes.
 
-pp.readCodePoint = function () {
-  let ch = this.input.charCodeAt(this.pos),
+export function readCodePoint(parser: Parser) {
+  let ch = parser.input.charCodeAt(parser.pos),
     code;
 
   if (ch === 123) {
     // '{'
-    if (this.options.ecmaVersion < 6) this.unexpected();
-    let codePos = ++this.pos;
-    code = this.readHexChar(this.input.indexOf("}", this.pos) - this.pos);
-    ++this.pos;
-    if (code > 0x10ffff) this.invalidStringToken(codePos, "Code point out of bounds");
+    if (parser.options.ecmaVersion < 6) unexpected(parser);
+    let codePos = ++parser.pos;
+    code = readHexChar(parser, parser.input.indexOf("}", parser.pos) - parser.pos);
+    ++parser.pos;
+    if (code > 0x10ffff) invalidStringToken(parser, codePos, "Code point out of bounds");
   } else {
-    code = this.readHexChar(4);
+    code = readHexChar(parser, 4);
   }
   return code;
-};
+}
 
 pp.readString = function (quote) {
   let out = "",
@@ -698,63 +721,63 @@ pp.readString = function (quote) {
 
 const INVALID_TEMPLATE_ESCAPE_ERROR = {};
 
-pp.tryReadTemplateToken = function () {
-  this.inTemplateElement = true;
+export function tryReadTemplateToken(parser: Parser) {
+  parser.inTemplateElement = true;
   try {
-    this.readTmplToken();
+    parser.readTmplToken();
   } catch (err) {
     if (err === INVALID_TEMPLATE_ESCAPE_ERROR) {
-      this.readInvalidTemplateToken();
+      parser.readInvalidTemplateToken();
     } else {
       throw err;
     }
   }
 
-  this.inTemplateElement = false;
-};
+  parser.inTemplateElement = false;
+}
 
-pp.invalidStringToken = function (position, message) {
-  if (this.inTemplateElement && this.options.ecmaVersion >= 9) {
+export function invalidStringToken(parser: Parser, position: number, message: string) {
+  if (parser.inTemplateElement && parser.options.ecmaVersion >= 9) {
     throw INVALID_TEMPLATE_ESCAPE_ERROR;
   } else {
-    this.raise(position, message);
+    raise(parser, position, message);
   }
-};
+}
 
-pp.readTmplToken = function () {
+export function readTmplToken(parser: Parser) {
   let out = "",
-    chunkStart = this.pos;
+    chunkStart = parser.pos;
   for (;;) {
-    if (this.pos >= this.input.length) this.raise(this.start, "Unterminated template");
-    let ch = this.input.charCodeAt(this.pos);
-    if (ch === 96 || (ch === 36 && this.input.charCodeAt(this.pos + 1) === 123)) {
+    if (parser.pos >= parser.input.length) raise(parser, parser.start, "Unterminated template");
+    let ch = parser.input.charCodeAt(parser.pos);
+    if (ch === 96 || (ch === 36 && parser.input.charCodeAt(parser.pos + 1) === 123)) {
       // '`', '${'
       if (
-        this.pos === this.start &&
-        (this.type === tt.template || this.type === tt.invalidTemplate)
+        parser.pos === parser.start &&
+        (parser.type === tt.template || parser.type === tt.invalidTemplate)
       ) {
         if (ch === 36) {
-          this.pos += 2;
-          return this.finishToken(tt.dollarBraceL);
+          parser.pos += 2;
+          return finishToken(parser, tt.dollarBraceL);
         } else {
-          ++this.pos;
-          return this.finishToken(tt.backQuote);
+          ++parser.pos;
+          return finishToken(parser, tt.backQuote);
         }
       }
-      out += this.input.slice(chunkStart, this.pos);
-      return this.finishToken(tt.template, out);
+      out += parser.input.slice(chunkStart, parser.pos);
+      return finishToken(parser, tt.template, out);
     }
     if (ch === 92) {
       // '\'
-      out += this.input.slice(chunkStart, this.pos);
-      out += this.readEscapedChar(true);
-      chunkStart = this.pos;
+      out += parser.input.slice(chunkStart, parser.pos);
+      out += readEscapedChar(parser, true);
+      chunkStart = parser.pos;
     } else if (isNewLine(ch)) {
-      out += this.input.slice(chunkStart, this.pos);
-      ++this.pos;
+      out += parser.input.slice(chunkStart, parser.pos);
+      ++parser.pos;
       switch (ch) {
         case 13:
-          if (this.input.charCodeAt(this.pos) === 10) ++this.pos;
+          if (parser.input.charCodeAt(parser.pos) === 10) ++parser.pos;
         case 10:
           out += "\n";
           break;
@@ -762,59 +785,63 @@ pp.readTmplToken = function () {
           out += String.fromCharCode(ch);
           break;
       }
-      if (this.options.locations) {
-        ++this.curLine;
-        this.lineStart = this.pos;
+      if (parser.options.locations) {
+        ++parser.curLine;
+        parser.lineStart = parser.pos;
       }
-      chunkStart = this.pos;
+      chunkStart = parser.pos;
     } else {
-      ++this.pos;
+      ++parser.pos;
     }
   }
-};
+}
 
 // Reads a template token to search for the end, without validating any escape sequences
-pp.readInvalidTemplateToken = function () {
-  for (; this.pos < this.input.length; this.pos++) {
-    switch (this.input[this.pos]) {
+export function readInvalidTemplateToken(parser: Parser) {
+  for (; parser.pos < parser.input.length; parser.pos++) {
+    switch (parser.input[parser.pos]) {
       case "\\":
-        ++this.pos;
+        ++parser.pos;
         break;
 
       case "$":
-        if (this.input[this.pos + 1] !== "{") break;
+        if (parser.input[parser.pos + 1] !== "{") break;
       // fall through
       case "`":
-        return this.finishToken(tt.invalidTemplate, this.input.slice(this.start, this.pos));
+        return finishToken(
+          parser,
+          tt.invalidTemplate,
+          parser.input.slice(parser.start, parser.pos),
+        );
 
       case "\r":
-        if (this.input[this.pos + 1] === "\n") ++this.pos;
+        if (parser.input[parser.pos + 1] === "\n") ++parser.pos;
       // fall through
       case "\n":
       case "\u2028":
       case "\u2029":
-        ++this.curLine;
-        this.lineStart = this.pos + 1;
+        ++parser.curLine;
+        parser.lineStart = parser.pos + 1;
         break;
     }
   }
-  this.raise(this.start, "Unterminated template");
-};
+  raise(parser, parser.start, "Unterminated template");
+}
 
 // Used to read escaped characters
 
-pp.readEscapedChar = function (inTemplate) {
-  let ch = this.input.charCodeAt(++this.pos);
-  ++this.pos;
+export function readEscapedChar(parser: Parser, inTemplate: boolean) {
+  let ch = parser.input.charCodeAt(++parser.pos);
+  ++parser.pos;
   switch (ch) {
     case 110:
       return "\n"; // 'n' -> '\n'
     case 114:
       return "\r"; // 'r' -> '\r'
     case 120:
-      return String.fromCharCode(this.readHexChar(2)); // 'x'
+      return String.fromCharCode(readHexChar(parser, 2)); // 'x'
     case 117:
-      return codePointToString(this.readCodePoint()); // 'u'
+      return codePointToString(readCodePoint(parser)); // 'u'
     case 116:
       return "\t"; // 't' -> '\t'
     case 98:
@@ -824,36 +851,37 @@ pp.readEscapedChar = function (inTemplate) {
     case 102:
       return "\f"; // 'f' -> '\f'
     case 13:
-      if (this.input.charCodeAt(this.pos) === 10) ++this.pos; // '\r\n'
+      if (parser.input.charCodeAt(parser.pos) === 10) ++parser.pos; // '\r\n'
     case 10: // ' \n'
-      if (this.options.locations) {
-        this.lineStart = this.pos;
-        ++this.curLine;
+      if (parser.options.locations) {
+        parser.lineStart = parser.pos;
+        ++parser.curLine;
       }
       return "";
     case 56:
     case 57:
-      if (this.strict) {
-        this.invalidStringToken(this.pos - 1, "Invalid escape sequence");
+      if (parser.strict) {
+        invalidStringToken(parser, parser.pos - 1, "Invalid escape sequence");
       }
       if (inTemplate) {
-        const codePos = this.pos - 1;
+        const codePos = parser.pos - 1;
 
-        this.invalidStringToken(codePos, "Invalid escape sequence in template string");
+        invalidStringToken(parser, codePos, "Invalid escape sequence in template string");
       }
     default:
       if (ch >= 48 && ch <= 55) {
-        let octalStr = this.input.substr(this.pos - 1, 3).match(/^[0-7]+/)[0];
+        let octalStr = parser.input.substr(parser.pos - 1, 3).match(/^[0-7]+/)[0];
         let octal = parseInt(octalStr, 8);
         if (octal > 255) {
           octalStr = octalStr.slice(0, -1);
           octal = parseInt(octalStr, 8);
         }
-        this.pos += octalStr.length - 1;
-        ch = this.input.charCodeAt(this.pos);
-        if ((octalStr !== "0" || ch === 56 || ch === 57) && (this.strict || inTemplate)) {
-          this.invalidStringToken(
-            this.pos - 1 - octalStr.length,
+        parser.pos += octalStr.length - 1;
+        ch = parser.input.charCodeAt(parser.pos);
+        if ((octalStr !== "0" || ch === 56 || ch === 57) && (parser.strict || inTemplate)) {
+          invalidStringToken(
+            parser,
+            parser.pos - 1 - octalStr.length,
             inTemplate ? "Octal literal in template string" : "Octal literal in strict mode",
           );
         }
@@ -862,24 +890,24 @@ pp.readEscapedChar = function (inTemplate) {
       if (isNewLine(ch)) {
         // Unicode new line characters after \ get removed from output in both
         // template literals and strings
-        if (this.options.locations) {
-          this.lineStart = this.pos;
-          ++this.curLine;
+        if (parser.options.locations) {
+          parser.lineStart = parser.pos;
+          ++parser.curLine;
         }
         return "";
       }
       return String.fromCharCode(ch);
   }
-};
+}
 
 // Used to read character escape sequences ('\x', '\u', '\U').
 
-pp.readHexChar = function (len) {
-  let codePos = this.pos;
-  let n = this.readInt(16, len);
-  if (n === null) this.invalidStringToken(codePos, "Bad character escape sequence");
+export function readHexChar(parser: Parser, len: number) {
+  let codePos = parser.pos;
+  let n = readInt(parser, 16, len);
+  if (n === null) invalidStringToken(parser, codePos, "Bad character escape sequence");
   return n;
-};
+}
 
 // Read an identifier, and return it as a string. Sets `this.containsEsc`
 // to whether the word contained a '\u' escape.
@@ -887,46 +915,47 @@ pp.readHexChar = function (len) {
 // Incrementally adds only escaped chars, adding other chunks as-is
 // as a micro-optimization.
 
-pp.readWord1 = function () {
-  this.containsEsc = false;
+export function readWord1(parser: Parser) {
+  parser.containsEsc = false;
   let word = "",
     first = true,
-    chunkStart = this.pos;
-  let astral = this.options.ecmaVersion >= 6;
-  while (this.pos < this.input.length) {
-    let ch = this.fullCharCodeAtPos();
+    chunkStart = parser.pos;
+  let astral = parser.options.ecmaVersion >= 6;
+  while (parser.pos < parser.input.length) {
+    let ch = fullCharCodeAtPos(parser);
     if (isIdentifierChar(ch, astral)) {
-      this.pos += ch <= 0xffff ? 1 : 2;
+      parser.pos += ch <= 0xffff ? 1 : 2;
     } else if (ch === 92) {
       // "\"
-      this.containsEsc = true;
-      word += this.input.slice(chunkStart, this.pos);
-      let escStart = this.pos;
-      if (this.input.charCodeAt(++this.pos) !== 117)
+      parser.containsEsc = true;
+      word += parser.input.slice(chunkStart, parser.pos);
+      let escStart = parser.pos;
+      if (parser.input.charCodeAt(++parser.pos) !== 117)
         // "u"
-        this.invalidStringToken(this.pos, "Expecting Unicode escape sequence \\uXXXX");
-      ++this.pos;
-      let esc = this.readCodePoint();
+        invalidStringToken(parser, parser.pos, "Expecting Unicode escape sequence \\uXXXX");
+      ++parser.pos;
+      let esc = readCodePoint(parser);
       if (!(first ? isIdentifierStart : isIdentifierChar)(esc, astral))
-        this.invalidStringToken(escStart, "Invalid Unicode escape");
+        invalidStringToken(parser, escStart, "Invalid Unicode escape");
       word += codePointToString(esc);
-      chunkStart = this.pos;
+      chunkStart = parser.pos;
     } else {
       break;
     }
     first = false;
   }
-  return word + this.input.slice(chunkStart, this.pos);
-};
+  return word + parser.input.slice(chunkStart, parser.pos);
+}
 
 // Read an identifier or keyword token. Will check for reserved
 // words when necessary.
 
-pp.readWord = function () {
-  let word = this.readWord1();
+export function readWord(parser: Parser) {
+  let word = readWord1(parser);
   let type = tt.name;
-  if (this.keywords.test(word)) {
-    type = keywordTypes[word];
+  if (parser.keywords.test(word)) {
+    type = keywordTypes.get(word)!;
   }
-  return this.finishToken(type, word);
-};
+
+  return finishToken(parser, type, word);
+}
