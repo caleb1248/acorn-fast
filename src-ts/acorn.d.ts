@@ -1,11 +1,20 @@
+// @ts-check
+
 type Option<T> = T | null | undefined;
 
-export interface Node {
+export interface Node<T extends AnyNode = AnyNode> {
   start: number;
   end: number;
-  type: string;
   range?: Option<[number, number]>;
   loc?: Option<SourceLocation>;
+  /**
+   * Properties specific to the type of node, suh as the properties in `Identifier`.
+   */
+  specific: T;
+}
+
+export interface UnknownNode {
+  type: "";
 }
 
 export interface SourceLocation {
@@ -21,12 +30,12 @@ export interface Position {
   column: number;
 }
 
-export interface Identifier extends Node {
+export interface Identifier {
   type: "Identifier";
   name: string;
 }
 
-export interface Literal extends Node {
+export interface Literal {
   type: "Literal";
   value?: Option<string | boolean | number | RegExp | bigint>;
   raw?: string;
@@ -37,167 +46,167 @@ export interface Literal extends Node {
   bigint?: string;
 }
 
-export interface Program extends Node {
+export interface Program {
   type: "Program";
-  body: Array<Statement | ModuleDeclaration>;
+  body: Array<Node<Statement | ModuleDeclaration>>;
   sourceType: "script" | "module";
 }
 
-export interface Function extends Node {
-  id?: Option<Identifier>;
-  params: Array<Pattern>;
-  body: BlockStatement | Expression;
+export interface Function {
+  id?: Option<Node<Identifier>>;
+  params: Array<Node<Pattern>>;
+  body: Node<BlockStatement | Expression>;
   generator: boolean;
   expression: boolean;
   async: boolean;
 }
 
-export interface ExpressionStatement extends Node {
+export interface ExpressionStatement {
   type: "ExpressionStatement";
-  expression: Expression | Literal;
+  expression: Node<Expression | Literal>;
   directive?: Option<string>;
 }
 
-export interface BlockStatement extends Node {
+export interface BlockStatement {
   type: "BlockStatement";
-  body: Array<Statement>;
+  body: Array<Node<Statement>>;
 }
 
-export interface EmptyStatement extends Node {
+export interface EmptyStatement {
   type: "EmptyStatement";
 }
 
-export interface DebuggerStatement extends Node {
+export interface DebuggerStatement {
   type: "DebuggerStatement";
 }
 
-export interface WithStatement extends Node {
+export interface WithStatement {
   type: "WithStatement";
-  object: Expression;
-  body: Statement;
+  object: Node<Expression>;
+  body: Node<Statement>;
 }
 
-export interface ReturnStatement extends Node {
+export interface ReturnStatement {
   type: "ReturnStatement";
-  argument?: Option<Expression>;
+  argument?: Option<Node<Expression>>;
 }
 
-export interface LabeledStatement extends Node {
+export interface LabeledStatement {
   type: "LabeledStatement";
-  label: Identifier;
-  body: Statement;
+  label: Node<Identifier>;
+  body: Node<Statement>;
 }
 
-export interface BreakStatement extends Node {
+export interface BreakStatement {
   type: "BreakStatement";
-  label?: Option<Identifier>;
+  label?: Option<Node<Identifier>>;
 }
 
-export interface ContinueStatement extends Node {
+export interface ContinueStatement {
   type: "ContinueStatement";
-  label?: Option<Identifier>;
+  label?: Option<Node<Identifier>>;
 }
 
-export interface IfStatement extends Node {
+export interface IfStatement {
   type: "IfStatement";
   test: Expression;
   consequent: Statement;
   alternate?: Option<Statement>;
 }
 
-export interface SwitchStatement extends Node {
+export interface SwitchStatement {
   type: "SwitchStatement";
   discriminant: Expression;
-  cases: Array<SwitchCase>;
+  cases: Array<Node<SwitchCase>>;
 }
 
-export interface SwitchCase extends Node {
+export interface SwitchCase {
   type: "SwitchCase";
-  test?: Option<Expression>;
-  consequent: Array<Statement>;
+  test?: Option<Node<Expression>>;
+  consequent: Array<Node<Statement>>;
 }
 
-export interface ThrowStatement extends Node {
+export interface ThrowStatement {
   type: "ThrowStatement";
-  argument: Expression;
+  argument: Node<Expression>;
 }
 
-export interface TryStatement extends Node {
+export interface TryStatement {
   type: "TryStatement";
-  block: BlockStatement;
-  handler?: Option<CatchClause>;
-  finalizer?: Option<BlockStatement>;
+  block: Node<BlockStatement>;
+  handler?: Option<Node<CatchClause>>;
+  finalizer?: Option<Node<BlockStatement>>;
 }
 
-export interface CatchClause extends Node {
+export interface CatchClause {
   type: "CatchClause";
-  param?: Option<Pattern>;
-  body: BlockStatement;
+  param?: Option<Node<Pattern>>;
+  body: Node<BlockStatement>;
 }
 
-export interface WhileStatement extends Node {
+export interface WhileStatement {
   type: "WhileStatement";
-  test: Expression;
-  body: Statement;
+  test: Node<Expression>;
+  body: Node<Statement>;
 }
 
-export interface DoWhileStatement extends Node {
+export interface DoWhileStatement {
   type: "DoWhileStatement";
-  body: Statement;
-  test: Expression;
+  body: Node<Statement>;
+  test: Node<Expression>;
 }
 
-export interface ForStatement extends Node {
+export interface ForStatement {
   type: "ForStatement";
-  init?: Option<VariableDeclaration | Expression>;
-  test?: Option<Expression>;
-  update?: Option<Expression>;
-  body: Statement;
+  init?: Option<Node<VariableDeclaration | Expression>>;
+  test?: Option<Node<Expression>>;
+  update?: Option<Node<Expression>>;
+  body: Node<Statement>;
 }
 
-export interface ForInStatement extends Node {
+export interface ForInStatement {
   type: "ForInStatement";
-  left: VariableDeclaration | Pattern;
-  right: Expression;
-  body: Statement;
+  left: Node<VariableDeclaration | Pattern>;
+  right: Node<Expression>;
+  body: Node<Statement>;
 }
 
 export interface FunctionDeclaration extends Function {
   type: "FunctionDeclaration";
-  id: Identifier;
-  body: BlockStatement;
+  id: Node<Identifier>;
+  body: Node<BlockStatement>;
 }
 
-export interface VariableDeclaration extends Node {
+export interface VariableDeclaration {
   type: "VariableDeclaration";
-  declarations: Array<VariableDeclarator>;
+  declarations: Array<Node<VariableDeclarator>>;
   kind: "var" | "let" | "const" | "using" | "await using";
 }
 
-export interface VariableDeclarator extends Node {
+export interface VariableDeclarator {
   type: "VariableDeclarator";
-  id: Pattern;
-  init?: Option<Expression>;
+  id: Node<Pattern>;
+  init?: Option<Node<Expression>>;
 }
 
-export interface ThisExpression extends Node {
+export interface ThisExpression {
   type: "ThisExpression";
 }
 
-export interface ArrayExpression extends Node {
+export interface ArrayExpression {
   type: "ArrayExpression";
-  elements: Array<Expression | SpreadElement | null>;
+  elements: Array<Node<Expression> | Node<SpreadElement> | null>;
 }
 
-export interface ObjectExpression extends Node {
+export interface ObjectExpression {
   type: "ObjectExpression";
-  properties: Array<Property | SpreadElement>;
+  properties: Array<Node<Property | SpreadElement>>;
 }
 
-export interface Property extends Node {
+export interface Property {
   type: "Property";
-  key: Expression;
-  value: Expression;
+  key: Node<Expression>;
+  value: Node<Expression>;
   kind: "init" | "get" | "set";
   method: boolean;
   shorthand: boolean;
@@ -206,39 +215,32 @@ export interface Property extends Node {
 
 export interface FunctionExpression extends Function {
   type: "FunctionExpression";
-  body: BlockStatement;
+  body: Node<BlockStatement>;
 }
 
-export interface UnaryExpression extends Node {
+export interface UnaryExpression {
   type: "UnaryExpression";
   operator: UnaryOperator;
   prefix: boolean;
-  argument: Expression;
+  argument: Node<Expression>;
 }
 
-export type UnaryOperator =
-  | "-"
-  | "+"
-  | "!"
-  | "~"
-  | "typeof"
-  | "void"
-  | "delete";
+export type UnaryOperator = "-" | "+" | "!" | "~" | "typeof" | "void" | "delete";
 
-export interface UpdateExpression extends Node {
+export interface UpdateExpression {
   type: "UpdateExpression";
   operator: UpdateOperator;
-  argument: Expression;
+  argument: Node<Expression>;
   prefix: boolean;
 }
 
 export type UpdateOperator = "++" | "--";
 
-export interface BinaryExpression extends Node {
+export interface BinaryExpression {
   type: "BinaryExpression";
   operator: BinaryOperator;
-  left: Expression | PrivateIdentifier;
-  right: Expression;
+  left: Node<Expression | PrivateIdentifier>;
+  right: Node<Expression>;
 }
 
 export type BinaryOperator =
@@ -265,11 +267,11 @@ export type BinaryOperator =
   | "instanceof"
   | "**";
 
-export interface AssignmentExpression extends Node {
+export interface AssignmentExpression {
   type: "AssignmentExpression";
   operator: AssignmentOperator;
-  left: Pattern;
-  right: Expression;
+  left: Node<Pattern>;
+  right: Node<Expression>;
 }
 
 export type AssignmentOperator =
@@ -290,88 +292,88 @@ export type AssignmentOperator =
   | "&&="
   | "??=";
 
-export interface LogicalExpression extends Node {
+export interface LogicalExpression {
   type: "LogicalExpression";
   operator: LogicalOperator;
-  left: Expression;
-  right: Expression;
+  left: Node<Expression>;
+  right: Node<Expression>;
 }
 
 export type LogicalOperator = "||" | "&&" | "??";
 
-export interface MemberExpression extends Node {
+export interface MemberExpression {
   type: "MemberExpression";
-  object: Expression | Super;
-  property: Expression | PrivateIdentifier;
+  object: Node<Expression | Super>;
+  property: Node<Expression | PrivateIdentifier>;
   computed: boolean;
   optional: boolean;
 }
 
-export interface ConditionalExpression extends Node {
+export interface ConditionalExpression {
   type: "ConditionalExpression";
-  test: Expression;
-  alternate: Expression;
-  consequent: Expression;
+  test: Node<Expression>;
+  alternate: Node<Expression>;
+  consequent: Node<Expression>;
 }
 
-export interface CallExpression extends Node {
+export interface CallExpression {
   type: "CallExpression";
-  callee: Expression | Super;
-  arguments: Array<Expression | SpreadElement>;
+  callee: Node<Expression | Super>;
+  arguments: Array<Node<Expression | SpreadElement>>;
   optional: boolean;
 }
 
-export interface NewExpression extends Node {
+export interface NewExpression {
   type: "NewExpression";
-  callee: Expression;
-  arguments: Array<Expression | SpreadElement>;
+  callee: Node<Expression>;
+  arguments: Array<Node<Expression | SpreadElement>>;
 }
 
-export interface SequenceExpression extends Node {
+export interface SequenceExpression {
   type: "SequenceExpression";
-  expressions: Array<Expression>;
+  expressions: Array<Node<Expression>>;
 }
 
-export interface ForOfStatement extends Node {
+export interface ForOfStatement {
   type: "ForOfStatement";
-  left: VariableDeclaration | Pattern;
-  right: Expression;
-  body: Statement;
+  left: Node<VariableDeclaration | Pattern>;
+  right: Node<Expression>;
+  body: Node<Statement>;
   await: boolean;
 }
 
-export interface Super extends Node {
+export interface Super {
   type: "Super";
 }
 
-export interface SpreadElement extends Node {
+export interface SpreadElement {
   type: "SpreadElement";
-  argument: Expression;
+  argument: Node<Expression>;
 }
 
 export interface ArrowFunctionExpression extends Function {
   type: "ArrowFunctionExpression";
 }
 
-export interface YieldExpression extends Node {
+export interface YieldExpression {
   type: "YieldExpression";
-  argument?: Option<Expression>;
+  argument?: Option<Node<Expression>>;
   delegate: boolean;
 }
 
-export interface TemplateLiteral extends Node {
+export interface TemplateLiteral {
   type: "TemplateLiteral";
   quasis: Array<TemplateElement>;
-  expressions: Array<Expression>;
+  expressions: Array<Node<Expression>>;
 }
 
-export interface TaggedTemplateExpression extends Node {
+export interface TaggedTemplateExpression {
   type: "TaggedTemplateExpression";
-  tag: Expression;
-  quasi: TemplateLiteral;
+  tag: Node<Expression>;
+  quasi: Node<TemplateLiteral>;
 }
 
-export interface TemplateElement extends Node {
+export interface TemplateElement {
   type: "TemplateElement";
   tail: boolean;
   value: {
@@ -380,52 +382,52 @@ export interface TemplateElement extends Node {
   };
 }
 
-export interface AssignmentProperty extends Node {
+export interface AssignmentProperty {
   type: "Property";
-  key: Expression;
-  value: Pattern;
+  key: Node<Expression>;
+  value: Node<Pattern>;
   kind: "init";
   method: false;
   shorthand: boolean;
   computed: boolean;
 }
 
-export interface ObjectPattern extends Node {
+export interface ObjectPattern {
   type: "ObjectPattern";
-  properties: Array<AssignmentProperty | RestElement>;
+  properties: Array<Node<AssignmentProperty | RestElement>>;
 }
 
-export interface ArrayPattern extends Node {
+export interface ArrayPattern {
   type: "ArrayPattern";
-  elements: Array<Option<Pattern>>;
+  elements: Array<Option<Node<Pattern>>>;
 }
 
-export interface RestElement extends Node {
+export interface RestElement {
   type: "RestElement";
-  argument: Pattern;
+  argument: Node<Pattern>;
 }
 
-export interface AssignmentPattern extends Node {
+export interface AssignmentPattern {
   type: "AssignmentPattern";
-  left: Pattern;
-  right: Expression;
+  left: Node<Pattern>;
+  right: Node<Expression>;
 }
 
-export interface Class extends Node {
-  id?: Option<Identifier>;
-  superClass?: Option<Expression>;
-  body: ClassBody;
+export interface Class {
+  id?: Option<Node<Identifier>>;
+  superClass?: Option<Node<Expression>>;
+  body: Node<ClassBody>;
 }
 
-export interface ClassBody extends Node {
+export interface ClassBody {
   type: "ClassBody";
-  body: Array<MethodDefinition | PropertyDefinition | StaticBlock>;
+  body: Array<Node<MethodDefinition | PropertyDefinition | StaticBlock>>;
 }
 
-export interface MethodDefinition extends Node {
+export interface MethodDefinition {
   type: "MethodDefinition";
-  key: Expression | PrivateIdentifier;
-  value: FunctionExpression;
+  key: Node<Expression> | Node<PrivateIdentifier>;
+  value: Node<FunctionExpression>;
   kind: "constructor" | "method" | "get" | "set";
   computed: boolean;
   static: boolean;
@@ -433,68 +435,66 @@ export interface MethodDefinition extends Node {
 
 export interface ClassDeclaration extends Class {
   type: "ClassDeclaration";
-  id: Identifier;
+  id: Node<Identifier>;
 }
 
 export interface ClassExpression extends Class {
   type: "ClassExpression";
 }
 
-export interface MetaProperty extends Node {
+export interface MetaProperty {
   type: "MetaProperty";
-  meta: Identifier;
-  property: Identifier;
+  meta: Node<Identifier>;
+  property: Node<Identifier>;
 }
 
-export interface ImportDeclaration extends Node {
+export interface ImportDeclaration {
   type: "ImportDeclaration";
-  specifiers: Array<
-    ImportSpecifier | ImportDefaultSpecifier | ImportNamespaceSpecifier
-  >;
-  source: Literal;
+  specifiers: Array<ImportSpecifier | ImportDefaultSpecifier | ImportNamespaceSpecifier>;
+  source: Node<Literal>;
   attributes: Array<ImportAttribute>;
 }
 
-export interface ImportSpecifier extends Node {
+export interface ImportSpecifier {
   type: "ImportSpecifier";
-  imported: Identifier | Literal;
-  local: Identifier;
+  imported: Node<Identifier | Literal>;
+  local: Node<Identifier>;
 }
 
-export interface ImportDefaultSpecifier extends Node {
+export interface ImportDefaultSpecifier {
   type: "ImportDefaultSpecifier";
-  local: Identifier;
+  local: Node<Identifier>;
 }
 
-export interface ImportNamespaceSpecifier extends Node {
+export interface ImportNamespaceSpecifier {
   type: "ImportNamespaceSpecifier";
-  local: Identifier;
+  local: Node<Identifier>;
 }
 
-export interface ImportAttribute extends Node {
+export interface ImportAttribute {
   type: "ImportAttribute";
-  key: Identifier | Literal;
-  value: Literal;
+  key: Node<Identifier | Literal>;
+  value: Node<Literal>;
 }
 
-export interface ExportNamedDeclaration extends Node {
+export interface ExportNamedDeclaration {
   type: "ExportNamedDeclaration";
-  declaration?: Option<Declaration>;
-  specifiers: Array<ExportSpecifier>;
-  source?: Option<Literal>;
-  attributes: Array<ImportAttribute>;
+  declaration?: Option<Node<Declaration>>;
+  specifiers: Array<Node<ExportSpecifier>>;
+  source?: Option<Node<Literal>>;
+  attributes: Array<Node<ImportAttribute>>;
 }
 
-export interface ExportSpecifier extends Node {
+export interface ExportSpecifier {
   type: "ExportSpecifier";
-  exported: Identifier | Literal;
-  local: Identifier | Literal;
+  exported: Node<Identifier | Literal>;
+  local: Node<Identifier | Literal>;
 }
 
 export interface AnonymousFunctionDeclaration extends Function {
   type: "FunctionDeclaration";
   id: null;
-  body: BlockStatement;
+  body: Node<BlockStatement>;
 }
 
 export interface AnonymousClassDeclaration extends Class {
@@ -502,60 +502,61 @@ export interface AnonymousClassDeclaration extends Class {
   id: null;
 }
 
-export interface ExportDefaultDeclaration extends Node {
+export interface ExportDefaultDeclaration {
   type: "ExportDefaultDeclaration";
-  declaration:
+  declaration: Node<
     | AnonymousFunctionDeclaration
     | FunctionDeclaration
     | AnonymousClassDeclaration
     | ClassDeclaration
-    | Expression;
+    | Expression
+  >;
 }
 
-export interface ExportAllDeclaration extends Node {
+export interface ExportAllDeclaration {
   type: "ExportAllDeclaration";
-  source: Literal;
-  exported?: Option<Identifier | Literal>;
-  attributes: Array<ImportAttribute>;
+  source: Node<Literal>;
+  exported?: Option<Node<Identifier | Literal>>;
+  attributes: Array<Node<ImportAttribute>>;
 }
 
-export interface AwaitExpression extends Node {
+export interface AwaitExpression {
   type: "AwaitExpression";
-  argument: Expression;
+  argument: Node<Expression>;
 }
 
-export interface ChainExpression extends Node {
+export interface ChainExpression {
   type: "ChainExpression";
-  expression: MemberExpression | CallExpression;
+  expression: Node<MemberExpression> | Node<CallExpression>;
 }
 
-export interface ImportExpression extends Node {
+export interface ImportExpression {
   type: "ImportExpression";
-  source: Expression;
-  options?: Option<Expression>;
+  source: Node<Expression>;
+  options?: Option<Node<Expression>>;
 }
 
-export interface ParenthesizedExpression extends Node {
+export interface ParenthesizedExpression {
   type: "ParenthesizedExpression";
-  expression: Expression;
+  expression: Node<Expression>;
 }
 
-export interface PropertyDefinition extends Node {
+export interface PropertyDefinition {
   type: "PropertyDefinition";
-  key: Expression | PrivateIdentifier;
-  value?: Option<Expression>;
+  key: Node<Expression> | Node<PrivateIdentifier>;
+  value?: Option<Node<Expression>>;
   computed: boolean;
   static: boolean;
 }
 
-export interface PrivateIdentifier extends Node {
+export interface PrivateIdentifier {
   type: "PrivateIdentifier";
   name: string;
 }
 
-export interface StaticBlock extends Node {
+export interface StaticBlock {
   type: "StaticBlock";
-  body: Array<Statement>;
+  body: Array<Node<Statement>>;
 }
 
 export type Statement =
@@ -579,10 +580,7 @@ export type Statement =
   | ForOfStatement
   | Declaration;
 
-export type Declaration =
-  | FunctionDeclaration
-  | VariableDeclaration
-  | ClassDeclaration;
+export type Declaration = FunctionDeclaration | VariableDeclaration | ClassDeclaration;
 
 export type Expression =
   | Identifier
@@ -671,18 +669,15 @@ interface NodeTypes {
     | PropertyDefinition
     | PrivateIdentifier
     | StaticBlock
-    | VariableDeclarator;
+    | VariableDeclarator
+    | UnknownNode;
 }
 
 export type AnyNode = NodeTypes[keyof NodeTypes];
 
 export function parse(input: string, options: Options): Program;
 
-export function parseExpressionAt(
-  input: string,
-  pos: number,
-  options: Options,
-): Expression;
+export function parseExpressionAt(input: string, pos: number, options: Options): Expression;
 
 export function tokenizer(
   input: string,
@@ -905,18 +900,14 @@ export interface Options {
    * @param lastTokEnd the position of the comma as an offset
    * @param lastTokEndLoc location if {@link locations} is enabled
    */
-  onInsertedSemicolon?: Option<
-    (lastTokEnd: number, lastTokEndLoc?: Position) => void
-  >;
+  onInsertedSemicolon?: Option<(lastTokEnd: number, lastTokEndLoc?: Position | null) => void>;
 
   /**
    * similar to `onInsertedSemicolon`, but for trailing commas
    * @param lastTokEnd the position of the comma as an offset
    * @param lastTokEndLoc location if `locations` is enabled
    */
-  onTrailingComma?: Option<
-    (lastTokEnd: number, lastTokEndLoc?: Position) => void
-  >;
+  onTrailingComma?: Option<(lastTokEnd: number, lastTokEndLoc?: Position) => void>;
 
   /**
    * By default, reserved words are only enforced if ecmaVersion >= 5.
@@ -1004,8 +995,8 @@ export interface Options {
       text: string,
       start: number,
       end: number,
-      startLoc?: Position,
-      endLoc?: Position,
+      startLoc?: Position | null,
+      endLoc?: Position | null,
     ) => void
   >;
 
@@ -1054,11 +1045,7 @@ export class Parser {
   parse(): Program;
 
   static parse(input: string, options: Options): Program;
-  static parseExpressionAt(
-    input: string,
-    pos: number,
-    options: Options,
-  ): Expression;
+  static parseExpressionAt(input: string, pos: number, options: Options): Expression;
   static tokenizer(
     input: string,
     options: Options,
@@ -1066,9 +1053,7 @@ export class Parser {
     getToken(): Token;
     [Symbol.iterator](): Iterator<Token>;
   };
-  static extend(
-    ...plugins: ((BaseParser: typeof Parser) => typeof Parser)[]
-  ): typeof Parser;
+  static extend(...plugins: ((BaseParser: typeof Parser) => typeof Parser)[]): typeof Parser;
 }
 
 export const defaultOptions: Options;

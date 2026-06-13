@@ -1409,11 +1409,12 @@ export function parseIdentNode(parser: Parser) {
 export function parsePrivateIdent(parser: Parser) {
   const node = startNode(parser);
   if (parser.type === tt.privateId) {
-    node.name = parser.value;
+    node.specific = { type: "PrivateIdentifier", name: parser.value! };
   } else {
     unexpected(parser);
   }
   next(parser);
+
   finishNode(parser, node, "PrivateIdentifier");
 
   // For validating existence

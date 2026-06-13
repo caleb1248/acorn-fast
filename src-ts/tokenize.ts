@@ -18,7 +18,7 @@ export class Token {
   public start: number;
   public end: number;
   public loc?: SourceLocation;
-  public range?: [number, number];
+  public range?: [number, number] | null;
 
   constructor(p: Parser) {
     this.type = p.type;
@@ -31,8 +31,9 @@ export class Token {
   }
 }
 
-// Move to the next token
-
+/**
+ * Move to the next token
+ */
 export function next(parser: Parser, ignoreEscapeSequenceInKeyword = false) {
   if (!ignoreEscapeSequenceInKeyword && parser.type.keyword && parser.containsEsc)
     raiseRecoverable(parser, parser.start, "Escape sequence in keyword " + parser.type.keyword);
@@ -120,6 +121,7 @@ export function skipBlockComment(parser: Parser) {
   }
   if (parser.options.onComment)
     parser.options.onComment(
+      parser,
       true,
       parser.input.slice(start + 2, end),
       start,
@@ -221,7 +223,7 @@ export function finishToken(parser: Parser, type: TokenType, val: string | null)
 //
 // All in the name of speed.
 //
-pp.readToken_dot = function () {
+export function readToken_dot(parser: Parser) {
   let next = this.input.charCodeAt(this.pos + 1);
   if (next >= 48 && next <= 57) return this.readNumber(true);
   let next2 = this.input.charCodeAt(this.pos + 2);
@@ -233,7 +235,7 @@ pp.readToken_dot = function () {
     ++this.pos;
     return this.finishToken(tt.dot);
   }
-};
+}
 
 export function readToken_slash(parser: Parser) {
   // '/'
@@ -246,7 +248,7 @@ export function readToken_slash(parser: Parser) {
   return finishOp(parser, tt.slash, 1);
 }
 
-pp.readToken_mult_modulo_exp = function (code) {
+export function readToken_mult_modulo_exp(parser: Parser, code) {
   // '%*'
   let next = this.input.charCodeAt(this.pos + 1);
   let size = 1;
@@ -261,9 +263,9 @@ pp.readToken_mult_modulo_exp = function (code) {
 
   if (next === 61) return this.finishOp(tt.assign, size + 1);
   return this.finishOp(tokentype, size);
-};
+}
 
-pp.readToken_pipe_amp = function (code) {
+export function readToken_pipe_amp(parser: Parser, code) {
   // '|&'
   let next = this.input.charCodeAt(this.pos + 1);
   if (next === code) {
@@ -275,14 +277,14 @@ pp.readToken_pipe_amp = function (code) {
   }
   if (next === 61) return this.finishOp(tt.assign, 2);
   return this.finishOp(code === 124 ? tt.bitwiseOR : tt.bitwiseAND, 1);
-};
+}
 
-pp.readToken_caret = function () {
+export function readToken_caret(parser: Parser) {
   // '^'
   let next = this.input.charCodeAt(this.pos + 1);
   if (next === 61) return this.finishOp(tt.assign, 2);
   return this.finishOp(tt.bitwiseXOR, 1);
-};
+}
 
 export function readToken_plus_min(parser: Parser, code: number) {
   // '+-'
@@ -331,7 +333,7 @@ export function readToken_lt_gt(parser: Parser, code: number) {
   return finishOp(parser, tt.relational, size);
 }
 
-pp.readToken_eq_excl = function (code) {
+export function readToken_eq_excl(parser: Parser, code) {
   // '=!'
   let next = this.input.charCodeAt(this.pos + 1);
   if (next === 61)
@@ -342,9 +344,9 @@ pp.readToken_eq_excl = function (code) {
     return this.finishToken(tt.arrow);
   }
   return this.finishOp(code === 61 ? tt.eq : tt.prefix, 1);
-};
+}
 
-pp.readToken_question = function () {
+export function readToken_question(parser: Parser) {
   // '?'
   const ecmaVersion = this.options.ecmaVersion;
   if (ecmaVersion >= 11) {
@@ -362,9 +364,9 @@ pp.readToken_question = function () {
     }
   }
   return this.finishOp(tt.question, 1);
-};
+}
 
-pp.readToken_numberSign = function () {
+export function readToken_numberSign(parser: Parser) {
   // '#'
   const ecmaVersion = this.options.ecmaVersion;
   let code = 35; // '#'
@@ -377,7 +379,7 @@ pp.readToken_numberSign = function () {
   }
 
   this.raise(this.pos, "Unexpected character '" + codePointToString(code) + "'");
-};
+}
 
 export function getTokenFromCode(parser: Parser, code: number) {
   switch (code) {
@@ -636,7 +638,7 @@ export function readRadixNumber(parser: Parser, radix) {
 
 // Read an integer, octal integer, or floating-point number.
 
-pp.readNumber = function (startsWithDot) {
+export function readNumber(parser: Parser, startsWithDot) {
   let start = this.pos;
   if (!startsWithDot && this.readInt(10, undefined, true) === null)
     this.raise(start, "Invalid number");
@@ -668,7 +670,7 @@ pp.readNumber = function (startsWithDot) {
 
   let val = stringToNumber(this.input.slice(start, this.pos), octal);
   return this.finishToken(tt.num, val);
-};
+}
 
 // Read a string value, interpreting backslash-escapes.
 
@@ -689,7 +691,7 @@ export function readCodePoint(parser: Parser) {
   return code;
 }
 
-pp.readString = function (quote) {
+export function readString(parser: Parser, quote) {
   let out = "",
     chunkStart = ++this.pos;
   for (;;) {
@@ -715,7 +717,7 @@ pp.readString = function (quote) {
   }
   out += this.input.slice(chunkStart, this.pos++);
   return this.finishToken(tt.string, out);
-};
+}
 
 // Reads template string tokens.
 

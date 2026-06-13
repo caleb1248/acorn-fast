@@ -16,7 +16,7 @@ class AcornSyntaxError extends SyntaxError {
 // of the error message, and then raises a `SyntaxError` with that
 // message.
 
-export function raise(parser: Parser, pos: number, message: string) {
+export function raise(parser: Parser, pos: number, message: string): never {
   let loc = getLineInfo(parser.input, pos);
   message += " (" + loc.line + ":" + loc.column + ")";
   if (parser.sourceFile) {

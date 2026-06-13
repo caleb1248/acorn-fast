@@ -55,9 +55,7 @@ export function eat(parser: Parser, type: TokenType) {
 // Tests whether parsed token is a contextual keyword.
 
 export function isContextual(parser: Parser, name: string) {
-  return (
-    parser.type === tt.name && parser.value === name && !parser.containsEsc
-  );
+  return parser.type === tt.name && parser.value === name && !parser.containsEsc;
 }
 
 // Consumes contextual keyword if possible.
@@ -87,10 +85,7 @@ export function canInsertSemicolon(parser: Parser) {
 export function insertSemicolon(parser: Parser) {
   if (canInsertSemicolon(parser)) {
     if (parser.options.onInsertedSemicolon)
-      parser.options.onInsertedSemicolon(
-        parser.lastTokEnd,
-        parser.lastTokEndLoc,
-      );
+      parser.options.onInsertedSemicolon(parser.lastTokEnd, parser.lastTokEndLoc);
     return true;
   }
 }
@@ -102,17 +97,10 @@ export function semicolon(parser: Parser) {
   if (!eat(parser, tt.semi) && !insertSemicolon(parser)) unexpected(parser);
 }
 
-export function afterTrailingComma(
-  parser: Parser,
-  tokType: TokenType,
-  notNext?: boolean,
-) {
+export function afterTrailingComma(parser: Parser, tokType: TokenType, notNext?: boolean) {
   if (parser.type === tokType) {
     if (parser.options.onTrailingComma)
-      parser.options.onTrailingComma(
-        parser.lastTokStart,
-        parser.lastTokStartLoc,
-      );
+      parser.options.onTrailingComma(parser.lastTokStart, parser.lastTokStartLoc);
     if (!notNext) next(parser);
     return true;
   }
@@ -122,12 +110,12 @@ export function afterTrailingComma(
 // raise an unexpected token error.
 
 export function expect(parser: Parser, type: TokenType) {
-  eat(parser, type) || unexpected(parser);
+  void (eat(parser, type) || unexpected(parser));
 }
 
 // Raise an unexpected token error.
 
-export function unexpected(parser: Parser, pos?: number) {
+export function unexpected(parser: Parser, pos?: number): never {
   raise(parser, pos != null ? pos : parser.start, "Unexpected token");
 }
 
@@ -164,11 +152,7 @@ export function checkPatternErrors(
     ? refDestructuringErrors.parenthesizedAssign
     : refDestructuringErrors.parenthesizedBind;
   if (parens > -1)
-    raiseRecoverable(
-      parser,
-      parens,
-      isAssign ? "Assigning to rvalue" : "Parenthesized pattern",
-    );
+    raiseRecoverable(parser, parens, isAssign ? "Assigning to rvalue" : "Parenthesized pattern");
 }
 
 export function checkExpressionErrors(
@@ -185,30 +169,16 @@ export function checkExpressionErrors(
       shorthandAssign,
       "Shorthand property assignments are valid only in destructuring patterns",
     );
-  if (doubleProto >= 0)
-    raiseRecoverable(parser, doubleProto, "Redefinition of __proto__ property");
+  if (doubleProto >= 0) raiseRecoverable(parser, doubleProto, "Redefinition of __proto__ property");
 }
 
 export function checkYieldAwaitInDefaultParams(parser: Parser) {
-  if (
-    parser.yieldPos &&
-    (!parser.awaitPos || parser.yieldPos < parser.awaitPos)
-  )
-    raise(
-      parser,
-      parser.yieldPos,
-      "Yield expression cannot be a default value",
-    );
-  if (parser.awaitPos)
-    raise(
-      parser,
-      parser.awaitPos,
-      "Await expression cannot be a default value",
-    );
+  if (parser.yieldPos && (!parser.awaitPos || parser.yieldPos < parser.awaitPos))
+    raise(parser, parser.yieldPos, "Yield expression cannot be a default value");
+  if (parser.awaitPos) raise(parser, parser.awaitPos, "Await expression cannot be a default value");
 }
 
 export function isSimpleAssignTarget(parser: Parser, expr) {
-  if (expr.type === "ParenthesizedExpression")
-    return isSimpleAssignTarget(parser, expr.expression);
+  if (expr.type === "ParenthesizedExpression") return isSimpleAssignTarget(parser, expr.expression);
   return expr.type === "Identifier" || expr.type === "MemberExpression";
 }

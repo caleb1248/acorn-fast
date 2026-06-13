@@ -12,7 +12,7 @@ import {
   expect,
   unexpected,
 } from "./parseutil";
-import { AnyNode } from "./acorn";
+import { AnyNode, ObjectExpression, ObjectPattern } from "./acorn";
 import { next } from "./tokenize";
 import { parseIdent, parseMaybeAssign } from "./expression";
 import { declareName } from "./scope";
@@ -22,55 +22,68 @@ import { declareName } from "./scope";
 
 type CheckClashes = Record<string, boolean>;
 
+type Assignable<T extends AnyNode = AnyNode> = T extends ObjectExpression ? ObjectPattern : T;
+
+/**
+ * Warning: this function does not assign properties to `node` anymore.
+ */
 export function toAssignable(
   parser: Parser,
-  node: AnyNode,
+  node: Node,
   isBinding: boolean,
   refDestructuringErrors?: DestructuringErrors,
 ) {
   if (parser.options.ecmaVersion >= 6 && node) {
-    switch (node.type) {
+    switch (node.specific.type) {
       case "Identifier":
-        if (parser.inAsync && node.name === "await")
+        if (parser.inAsync && node.specific.name === "await")
           raise(parser, node.start, "Cannot use 'await' as identifier inside an async function");
-        break;
+        return node;
 
       case "ObjectPattern":
       case "ArrayPattern":
       case "AssignmentPattern":
       case "RestElement":
-        break;
+        return node;
 
       case "ObjectExpression":
-        node.type = "ObjectPattern";
+        const oldProperties = node.specific.properties;
+        node.specific = { type: "ObjectPattern", properties: [] };
         if (refDestructuringErrors) checkPatternErrors(parser, refDestructuringErrors, true);
-        for (let prop of node.properties) {
-          toAssignable(parser, prop, isBinding);
+        for (let prop of oldProperties) {
+          const assignable = toAssignable(parser, prop, isBinding);
           // Early error:
           //   AssignmentRestProperty[Yield, Await] :
           //     `...` DestructuringAssignmentTarget[Yield, Await]
           //
           //   It is a Syntax Error if |DestructuringAssignmentTarget| is an |ArrayLiteral| or an |ObjectLiteral|.
           if (
-            prop.type === "RestElement" &&
-            (prop.argument.type === "ArrayPattern" || prop.argument.type === "ObjectPattern")
+            assignable.specific.type === "RestElement" &&
+            (assignable.specific.argument.type === "ArrayPattern" ||
+              assignable.argument.type === "ObjectPattern")
           ) {
-            raise(parser, prop.argument.start, "Unexpected token");
+            raise(parser, assignable.argument.start, "Unexpected token");
           }
         }
         break;
 
       case "Property":
         // AssignmentProperty has type === "Property"
-        if (node.kind !== "init")
-          raise(parser, node.key.start, "Object pattern can't contain getter or setter");
-        toAssignable(parser, node.value, isBinding);
+        if (node.specific.kind !== "init")
+          raise(parser, node.specific.key.start, "Object pattern can't contain getter or setter");
+        toAssignable(parser, node.specific.value, isBinding);
         break;
 
       case "ArrayExpression":
-        node.type = "ArrayPattern";
         if (refDestructuringErrors) checkPatternErrors(parser, refDestructuringErrors, true);
-        toAssignableList(parser, node.elements, isBinding);
+
+        return {
+          ...node,
+          specific: {
+            type: "ArrayPattern",
+            elements: toAssignableList(parser, node.specific.elements, isBinding),
+          },
+        };
         break;
 
       case "SpreadElement":
@@ -112,7 +125,11 @@ export function toAssignable(
 
 // Convert list of expression atoms to binding list.
 
-export function toAssignableList(parser: Parser, exprList: AnyNode[], isBinding: boolean) {
+export function toAssignableList(
+  parser: Parser,
+  exprList: (Node<AnyNode> | null)[],
+  isBinding: boolean,
+) {
   let end = exprList.length;
   for (let i = 0; i < end; i++) {
     let elt = exprList[i];

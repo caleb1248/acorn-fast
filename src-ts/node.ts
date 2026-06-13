@@ -1,17 +1,17 @@
 import type { Parser } from "./state.js";
 import { SourceLocation, Position } from "./locutil.js";
-import type { Node as _Node } from "./acorn.d.ts";
+import type { Node as _Node, AnyNode } from "./acorn.d.ts";
 
-export class Node implements _Node {
-  public type: string;
+export class Node<T extends AnyNode = AnyNode> implements _Node<T> {
   public start: number;
   public end: number;
-  public loc?: SourceLocation;
+  public loc?: SourceLocation | null;
   public sourceFile?: string;
-  public range?: [number, number];
+  public range?: [number, number] | null;
+  public specific: T;
 
   constructor(parser: Parser, pos: number, loc?: Position) {
-    this.type = "";
+    this.specific = { type: "" } as T;
     this.start = pos;
     this.end = 0;
     if (parser.options.locations && loc)
@@ -31,16 +31,15 @@ export function startNodeAt(parser: Parser, pos: number, loc: Position) {
 
 // Finish an AST node, adding `type` and `end` properties.
 
-function finishNodeAt(parser: Parser, node: Node, type: string, pos: number, loc: Position) {
-  node.type = type;
+function finishNodeAt(parser: Parser, node: Node, pos: number, loc?: Position | null) {
   node.end = pos;
-  if (parser.options.locations) node.loc!.end = loc;
-  if (parser.options.ranges) node.range![1] = pos;
+  if (parser.options.locations && node.loc && loc) node.loc.end = loc;
+  if (parser.options.ranges && node.range) node.range[1] = pos;
   return node;
 }
 
-export function finishNode(parser: Parser, node: Node, type: string) {
-  return finishNodeAt(parser, node, type, parser.lastTokEnd, parser.lastTokEndLoc);
+export function finishNode(parser: Parser, node: Node) {
+  return finishNodeAt(parser, node, parser.lastTokEnd, parser.lastTokEndLoc);
 }
 
 // TODO: figure out how to port this to rust

@@ -17,7 +17,7 @@ export class Position implements _Position {
 export class SourceLocation {
   public start: Position;
   public end: Position;
-  public source?: string;
+  public source?: string | null;
 
   constructor(p: Parser, start: Position, end: Position) {
     this.start = start;
